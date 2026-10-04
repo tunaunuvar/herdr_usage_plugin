@@ -43,13 +43,47 @@ test("narrow and short panes keep content inside the viewport and controls visib
     for (const rows of [12, 30]) {
       const ui = panel(columns, rows);
       ui.run("draw()");
-      const lines = stripVTControlCharacters(ui.output()).split("\n");
+      const lines = stripVTControlCharacters(ui.output()).split(/\r?\n/);
       assert.equal(lines.length, rows);
       for (const line of lines) {
         assert.ok(ui.run(`visibleWidth(${JSON.stringify(line)})`) <= columns - 2);
       }
       assert.match(lines.at(-2), /q\/Esc/);
     }
+  }
+});
+
+test("repeated folding clears old rows and keeps each row at the left edge", () => {
+  function terminal() {
+    const grid = Array.from({ length: 30 }, () => []);
+    let row = 0, column = 0;
+    return {
+      paint(output) {
+        for (const token of output.match(/\x1b\[[0-9;]*[A-Za-z]|[^\x1b]/gu) || []) {
+          if (token === "\x1b[H") { row = 0; column = 0; }
+          else if (token === "\x1b[2K") grid[row] = [];
+          else if (token === "\x1b[J") {
+            grid[row].length = column;
+            for (let i = row + 1; i < grid.length; i++) grid[i] = [];
+          } else if (token.startsWith("\x1b")) continue;
+          else if (token === "\r") column = 0;
+          else if (token === "\n") row++;
+          else grid[row][column++] = token;
+        }
+      },
+      contents: () => grid.map((line) => line.join("").trimEnd()),
+    };
+  }
+  const ui = panel(80, 30);
+  const screen = terminal();
+  for (const state of ['collapsed.clear()', 'collapsed.add("c"); collapsed.add("o"); collapsed.add("d")',
+    'collapsed.delete("c")', 'collapsed.clear()', 'collapsed.add("o")']) {
+    ui.run(state + "; draw()");
+    screen.paint(ui.output());
+    const fresh = terminal();
+    fresh.paint(ui.output());
+    assert.deepEqual(screen.contents(), fresh.contents());
+    assert.ok(screen.contents().every((line) => Array.from(line).length <= 78));
   }
 });
 
@@ -120,6 +154,17 @@ test("interactive startup uses one refresh timer and restores the terminal on cl
   output.rows = 12;
   output.emit("resize");
   assert.equal(stripVTControlCharacters(writes.at(-1)).split("\n").length, 12);
+  const controls = stripVTControlCharacters(writes.at(-1)).split(/\r?\n/).at(-1);
+  assert.match(controls, /\[d\].*\[a\]/);
+  assert.doesNotMatch(controls, /\[c\]|\[o\]/);
+  const beforeMissingCard = writes.length;
+  input.emit("keypress", "o", { name: "o" });
+  assert.equal(writes.length, beforeMissingCard);
+  for (let i = 0; i < 4; i++) {
+    vm.runInContext("scrollOffset = 999", context);
+    input.emit("keypress", "d", { name: "d" });
+    assert.equal(vm.runInContext("scrollOffset", context), 0);
+  }
   input.emit("keypress", "q", { name: "q" });
   assert.equal(stopped, true);
   assert.equal(rawModes.at(-1), false);

@@ -154,7 +154,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.4.1" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.4.2" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -476,9 +476,12 @@ function draw() {
     pair(width < 52 ? `${COLORS.cyan}[r]  [q/Esc]${COLORS.reset}`
       : `${COLORS.cyan}[r]${COLORS.reset} ${text("Yenile", "Refresh")}  ${COLORS.cyan}[q/Esc]${COLORS.reset} ${text("Kapat", "Close")}`,
       scrollEnd ? `${COLORS.muted}↑↓ ${scrollOffset + 1}/${scrollEnd + 1}${COLORS.reset}` : "", width),
-    fit(`${COLORS.muted}${width < 48 ? "[c] [o] [d] [a]" : text("[c] Codex  [o] OMP  [d] CLI  [a] Aç/kapat", "[c] Codex  [o] OMP  [d] CLI  [a] Toggle all")}${COLORS.reset}`, width),
+    fit(`${COLORS.muted}${[...sections, ["d", "CLI"], ["a", text("Aç/kapat", "Toggle all")]]
+      .map(([key, name]) => `[${key}]${width < 48 ? "" : ` ${name}`}`).join("  ")}${COLORS.reset}`, width),
   ];
-  process.stdout.write(process.stdout.isTTY ? "\x1b[H" + lines.join("\n") + "\x1b[J" : lines.join("\n") + "\n");
+  process.stdout.write(process.stdout.isTTY
+    ? "\x1b[H" + lines.map((line) => "\x1b[2K" + line).join("\r\n") + "\x1b[J"
+    : lines.join("\n") + "\n");
 }
 
 let refreshing = false;
@@ -521,15 +524,17 @@ function start() {
         process.exit(0);
       }
       if (key.name === "r") refresh();
-      if (["c", "o", "d"].includes(key.name)) {
+      if ([...sections.map(([id]) => id), "d"].includes(key.name)) {
         if (collapsed.has(key.name)) collapsed.delete(key.name);
         else collapsed.add(key.name);
+        scrollOffset = 0;
         draw();
       }
       if (key.name === "a") {
         const allSections = [...sections.map(([id]) => id), "d"];
         if (allSections.every((id) => collapsed.has(id))) collapsed.clear();
         else for (const id of allSections) collapsed.add(id);
+        scrollOffset = 0;
         draw();
       }
       const steps = { up: -1, down: 1, pageup: -pageRows, pagedown: pageRows };

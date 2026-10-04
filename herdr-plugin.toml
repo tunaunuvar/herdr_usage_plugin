@@ -1,6 +1,6 @@
 id = "tunaunuvar.herdr-usage-limits"
 name = "AI Usage Limits"
-version = "0.4.1"
+version = "0.4.2"
 min_herdr_version = "0.9.0"
 description = "Collapsible quota panel for Codex and OMP with AI CLI discovery"
 platforms = ["windows", "macos", "linux"]
