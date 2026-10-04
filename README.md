@@ -17,7 +17,7 @@ Claude Code's interactive `/usage`, Gemini CLI's `/stats model`, and Amp's `amp 
 Requires Herdr 0.9.0+ and Node.js on the Herdr server's `PATH`. Install from GitHub:
 
 ```sh
-herdr plugin install tunaunuvar/herdr-usage-limits
+herdr plugin install tunaunuvar/herdr_usage_plugin
 herdr plugin action invoke open --plugin tunaunuvar.herdr-usage-limits
 ```
 
