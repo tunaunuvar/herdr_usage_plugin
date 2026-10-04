@@ -1,0 +1,54 @@
+# AI Usage Limits for Herdr
+
+A small, collapsible terminal popup for account quota windows, with a discovery list for common AI CLIs. It runs on Windows, macOS, and Linux and has no third-party package dependencies.
+
+## What it shows
+
+- Codex account rate limits from Codex's local `app-server` RPC.
+- Quota windows returned by authenticated providers in Oh My Pi (OMP). OMP account identifiers are requested in redacted form.
+- Installed AI CLI names discovered on the `PATH` inherited by the Herdr server.
+
+The discovery list currently checks for Codex, OMP, Claude Code, Gemini CLI, Amp, OpenCode, Cursor Agent, GitHub Copilot CLI, Aider, Hermes, Pi, Goose, Crush, Kiro CLI, Qwen Code, Kimi CLI, LLM CLI, and Ollama. A detected tool without an adapter is identified as such; the plugin does not invent quota data. AI CLIs have no shared quota interface, and each provider decides what it exposes.
+
+Claude Code's interactive `/usage`, Gemini CLI's `/stats model`, and Amp's `amp usage` are shown as manual hints when those tools are detected. The plugin does not run those commands.
+
+## Install
+
+Requires Herdr 0.9.0+ and Node.js on the Herdr server's `PATH`. Install from GitHub:
+
+```sh
+herdr plugin install tunaunuvar/herdr-usage-limits
+herdr plugin action invoke open --plugin tunaunuvar.herdr-usage-limits
+```
+
+Codex and/or OMP must also be installed and signed in to show live quota bars. The discovery list is scanned when the popup starts; close and reopen it after installing another CLI.
+
+Optional shortcut (`prefix` then `u`, Ctrl+B then `u` by default), add to Herdr's `config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+u"
+type = "plugin_action"
+command = "tunaunuvar.herdr-usage-limits.open"
+description = "Open AI usage limits"
+```
+
+Then run `herdr server reload-config`.
+
+## Use
+
+Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. The panel refreshes every 60 seconds. Bars change color as a quota fills; reset rows show local date/time and a countdown; seven-day windows are marked `WEEKLY`.
+
+## Privacy and limits
+
+The plugin checks executable names on `PATH` and queries only the Codex and OMP interfaces described above. It does not scan credential/config files, call provider websites, or send telemetry. CLI discovery is limited to the command list in `usage.js` and to the PATH available to the Herdr server.
+
+## Local development
+
+```sh
+herdr plugin link .
+herdr plugin pane open --plugin tunaunuvar.herdr-usage-limits --entrypoint usage
+node --check usage.js
+```
+
+To uninstall the GitHub-managed copy, run `herdr plugin uninstall tunaunuvar.herdr-usage-limits`.
