@@ -10,16 +10,17 @@ const REFRESH_MS = 60_000;
 const CLAUDE_CACHE = path.join(os.homedir(), ".cache", "herdr-usage-limits", "claude.json");
 const COMMAND_TIMEOUT_MS = 12_000;
 const LOCALE = Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
-const IS_TURKISH = LOCALE.toLowerCase().startsWith("tr");
+let IS_TURKISH = LOCALE.toLowerCase().startsWith("tr");
 const text = (tr, en) => IS_TURKISH ? tr : en;
-const NO_ADAPTER = text("Bu eklentide kota adaptörü yok", "No quota adapter in this plugin");
+const localized = (value) => Array.isArray(value) ? text(...value) : value;
+const NO_ADAPTER = ["Bu eklentide kota adaptörü yok", "No quota adapter in this plugin"];
 const AI_TOOLS = [
-  { id: "codex", name: "Codex", command: "codex", note: text("Otomatik kota adaptörü", "Quota adapter available") },
-  { id: "omp", name: "Oh My Pi (OMP)", command: "omp", note: text("Bağlı OMP sağlayıcıları için otomatik kota", "Automatic quota data for connected OMP providers") },
-  { id: "claude", name: "Claude Code", command: "claude", note: text("OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge") },
-  { id: "gemini", name: "Gemini CLI", command: "gemini", note: text("Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI") },
-  { id: "amp", name: "Amp", command: "amp", note: text("amp usage ile kredi bakiyesi", "Check credits with amp usage") },
-  { id: "opencode", name: "OpenCode", command: "opencode", note: text("Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas") },
+  { id: "codex", name: "Codex", command: "codex", note: ["Otomatik kota adaptörü", "Quota adapter available"] },
+  { id: "omp", name: "Oh My Pi (OMP)", command: "omp", note: ["Bağlı OMP sağlayıcıları için otomatik kota", "Automatic quota data for connected OMP providers"] },
+  { id: "claude", name: "Claude Code", command: "claude", note: ["OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge"] },
+  { id: "gemini", name: "Gemini CLI", command: "gemini", note: ["Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI"] },
+  { id: "amp", name: "Amp", command: "amp", note: ["amp usage ile kredi bakiyesi", "Check credits with amp usage"] },
+  { id: "opencode", name: "OpenCode", command: "opencode", note: ["Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas"] },
   { id: "cursor", name: "Cursor Agent", command: "cursor-agent", note: NO_ADAPTER },
   { id: "copilot", name: "GitHub Copilot CLI", command: "copilot", note: NO_ADAPTER },
   { id: "aider", name: "Aider", command: "aider", note: NO_ADAPTER },
@@ -31,7 +32,7 @@ const AI_TOOLS = [
   { id: "qwen", name: "Qwen Code", command: "qwen", note: NO_ADAPTER },
   { id: "kimi", name: "Kimi CLI", command: "kimi", note: NO_ADAPTER },
   { id: "llm", name: "LLM CLI", command: "llm", note: NO_ADAPTER },
-  { id: "ollama", name: "Ollama", command: "ollama", note: text("Yerel model aracı; kota adaptörü yok", "Local model tool; no quota adapter") },
+  { id: "ollama", name: "Ollama", command: "ollama", note: ["Yerel model aracı; kota adaptörü yok", "Local model tool; no quota adapter"] },
 ];
 
 function findExecutable(command) {
@@ -55,11 +56,19 @@ const COLORS = process.stdout.isTTY ? {
   cyan: "\x1b[38;5;81m", green: "\x1b[38;5;78m", yellow: "\x1b[38;5;214m",
   red: "\x1b[38;5;203m", muted: "\x1b[38;5;245m", purple: "\x1b[38;5;141m",
 } : { reset: "", bold: "", dim: "", cyan: "", green: "", yellow: "", red: "", muted: "", purple: "" };
-const RESET_DATE_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+const DATE_OPTIONS = {
   weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
   year: "numeric",
   timeZoneName: "short",
-});
+};
+const RESET_DATE_FORMAT = {
+  tr: new Intl.DateTimeFormat("tr-TR", DATE_OPTIONS),
+  en: new Intl.DateTimeFormat("en-US", DATE_OPTIONS),
+};
+const TIME_FORMAT = {
+  tr: new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+  en: new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+};
 
 function run(command, args, timeoutMs = COMMAND_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
@@ -163,7 +172,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.5.0" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.5.1" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -209,7 +218,7 @@ function resetText(value) {
   const at = timestamp(value);
   if (!at) return text("reset zamanı bildirilmedi", "reset time not reported");
   const ms = at - Date.now();
-  const date = RESET_DATE_FORMAT.format(new Date(at));
+  const date = RESET_DATE_FORMAT[IS_TURKISH ? "tr" : "en"].format(new Date(at));
   if (ms <= 0) return `${date} · ${text("zamanı geçti", "elapsed")}`;
   const countdown = IS_TURKISH ? `${timeLeft(ms)} sonra` : `in ${timeLeft(ms)}`;
   return `${date} · ${countdown}`;
@@ -331,9 +340,9 @@ function ompResult(data) {
   if (!reports.length) throw new Error("OMP reported no account limits");
   const claude = reports.filter((report) => report.provider === "anthropic");
   const others = reports.filter((report) => report.provider !== "anthropic");
-  return { title: text("OMP · bağlı hesaplar", "OMP · connected accounts"), rows: rowsFor(others),
+  return { title: ["OMP · bağlı hesaplar", "OMP · connected accounts"], rows: rowsFor(others),
     accounts: others.map(accountInfo),
-    note: !others.length ? text("Claude verileri [h] kartında.", "Claude data is in the [h] card.") : null,
+    note: !others.length ? ["Claude verileri [h] kartında.", "Claude data is in the [h] card."] : null,
     claude: claude.length ? { title: "Claude · OMP", rows: rowsFor(claude), accounts: claude.map(accountInfo) } : null,
   };
 }
@@ -350,8 +359,9 @@ function claudeSnapshot(data) {
 async function claudeUsage() {
   let snapshot;
   try { snapshot = JSON.parse(fs.readFileSync(CLAUDE_CACHE, "utf8")); }
-  catch { throw new Error(text("Claude statusline köprüsünü bağla (README). OMP'de bağlı Claude varsa otomatik gösterilir.",
-    "Connect the Claude statusline bridge (README). Claude connected in OMP appears automatically.")); }
+  catch { throw Object.assign(new Error("Connect the Claude statusline bridge (README)."), { uiMessage: [
+    "Claude statusline köprüsünü bağla (README). OMP'de bağlı Claude varsa otomatik gösterilir.",
+    "Connect the Claude statusline bridge (README). Claude connected in OMP appears automatically."] }); }
   const rows = Array.isArray(snapshot.rows) ? snapshot.rows.slice(0, 3).map((row) =>
     windowRow(row.label, row.used, timestamp(row.resetsAt), null, row.windowMinutes)) : [];
   if (!rows.length || !timestamp(snapshot.savedAt)) throw new Error("Claude snapshot has no quota data");
@@ -496,7 +506,7 @@ function renderSection(key, name, result, width = panelWidth()) {
     : result.loading ? `${COLORS.yellow}${text("BEKLİYOR", "WAITING")}`
     : result.snapshotAt ? `${COLORS.yellow}${text("SON ÖLÇÜM", "SNAPSHOT")}`
     : `${COLORS.green}${text("CANLI", "LIVE")}`;
-  const title = `${COLORS.muted}[${key}] ${COLORS.cyan}${COLORS.bold}${marker} ${clean(result.title || name)}${COLORS.reset}  ${status}${COLORS.reset}`;
+  const title = `${COLORS.muted}[${key}] ${COLORS.cyan}${COLORS.bold}${marker} ${clean(localized(result.title) || name)}${COLORS.reset}  ${status}${COLORS.reset}`;
   const lines = [];
   const contentWidth = width - 6;
   if (folded) {
@@ -513,10 +523,11 @@ function renderSection(key, name, result, width = panelWidth()) {
     if (result.snapshotAt) lines.push(...wrap(text(`Son Claude ölçümü · ${resetText(result.snapshotAt)}; Claude çalışırken güncellenir.`,
       `Last Claude snapshot · ${resetText(result.snapshotAt)}; updates while Claude runs.`), contentWidth)
       .map((line) => `  ${COLORS.yellow}${line}${COLORS.reset}`), "");
-    if (result.note) lines.push(...wrap(result.note, contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
+    if (result.note) lines.push(...wrap(localized(result.note), contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
   }
   if (result.error || result.loading) {
-    const message = result.error || text("Kota bilgileri alınıyor…", "Fetching quota data…");
+    const message = result.error ? `${localized(result.error)}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.")}`
+      : text("Kota bilgileri alınıyor…", "Fetching quota data…");
     lines.push(...wrap(message, contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
     return frame(title, lines, width);
   }
@@ -554,7 +565,7 @@ function renderDiscovery(width = panelWidth()) {
     const hasAdapter = ["codex", "omp", "claude"].includes(tool.id);
     const status = hasAdapter ? text("kota panelinde", "quota panel") : text("tespit edildi", "detected");
     lines.push(`  ${pair(`${COLORS.bold}${tool.name}${COLORS.reset}`, `${hasAdapter ? COLORS.green : COLORS.muted}${status}${COLORS.reset}`, width - 6)}`);
-    if (!hasAdapter || tool.id === "claude") lines.push(`  ${COLORS.muted}${tool.note}${COLORS.reset}`);
+    if (!hasAdapter || tool.id === "claude") lines.push(`  ${COLORS.muted}${localized(tool.note)}${COLORS.reset}`);
     if (!hasAdapter) lines.push(...wrap(text("Paket / abonelik bitişi / yenileme hakkı · veri kaynağı yok",
       "Plan / subscription expiry / saved resets · no data source"), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
@@ -583,14 +594,16 @@ function draw() {
   while (viewport.length < pageRows) viewport.push("");
   const lines = [
     pair(`${COLORS.cyan}${COLORS.bold}HERDR${COLORS.reset} ${COLORS.muted}/ ${text("AI KOTA", "AI USAGE")}${COLORS.reset}`, `${status}${COLORS.reset}`, width),
-    pair(`${COLORS.muted}${summary}${COLORS.reset}`, `${COLORS.muted}${updatedAt || "—"} · 60s${COLORS.reset}`, width),
+    pair(`${COLORS.muted}${summary}${COLORS.reset}`, `${COLORS.muted}${updatedAt
+      ? typeof updatedAt === "number" ? TIME_FORMAT[IS_TURKISH ? "tr" : "en"].format(updatedAt) : updatedAt
+      : "—"} · 60s${COLORS.reset}`, width),
     "",
     ...viewport,
     `${COLORS.muted}${"─".repeat(width)}${COLORS.reset}`,
     pair(width < 52 ? `${COLORS.cyan}[r]  [q/Esc]${COLORS.reset}`
       : `${COLORS.cyan}[r]${COLORS.reset} ${text("Yenile", "Refresh")}  ${COLORS.cyan}[q/Esc]${COLORS.reset} ${text("Kapat", "Close")}`,
       scrollEnd ? `${COLORS.muted}↑↓ ${scrollOffset + 1}/${scrollEnd + 1}${COLORS.reset}` : "", width),
-    fit(`${COLORS.muted}${[...sections, ["d", "CLI"], ["a", text("Aç/kapat", "Toggle all")]]
+    fit(`${COLORS.muted}${[["l", text("English", "Türkçe")], ...sections, ["d", "CLI"], ["a", text("Aç/kapat", "Toggle all")]]
       .map(([key, name]) => `[${key}]${width < 48 ? "" : ` ${name}`}`).join("  ")}${COLORS.reset}`, width),
   ];
   process.stdout.write(process.stdout.isTTY
@@ -609,7 +622,7 @@ async function refresh() {
   if (sections.some(([key]) => key === "h")) specs.push(["Claude", claudeUsage]);
   const results = await Promise.all(specs.map(async ([name, fetcher]) => {
     try { return [name, await fetcher()]; }
-    catch (error) { return [name, { error: `${error.message}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.")}` }]; }
+    catch (error) { return [name, { error: error.uiMessage || error.message }]; }
   }));
   latestResults = new Map(results);
   const ompClaude = latestResults.get("OMP")?.claude;
@@ -617,7 +630,7 @@ async function refresh() {
     latestResults.set("Claude", ompClaude);
     if (!sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
   }
-  updatedAt = new Date().toLocaleTimeString(LOCALE);
+  updatedAt = Date.now();
   refreshing = false;
   draw();
 }
@@ -644,6 +657,11 @@ function start() {
         process.exit(0);
       }
       if (key.name === "r") refresh();
+      if (key.name === "l") {
+        IS_TURKISH = !IS_TURKISH;
+        scrollOffset = 0;
+        draw();
+      }
       if ([...sections.map(([id]) => id), "d"].includes(key.name)) {
         if (collapsed.has(key.name)) collapsed.delete(key.name);
         else collapsed.add(key.name);

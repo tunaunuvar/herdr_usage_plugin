@@ -1,5 +1,10 @@
 # AI Usage Limits for Herdr
 
+[![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
+[![Languages: TR / EN](https://img.shields.io/badge/languages-TR%20%7C%20EN-8B5CF6)](#use)
+[![Release: v0.5.1](https://img.shields.io/badge/release-v0.5.1-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.5.1)
+[![License: MIT](https://img.shields.io/badge/license-MIT-97CA00)](LICENSE)
+
 A small, collapsible terminal popup for account quota windows, with a discovery list for common AI CLIs. It runs on Windows, macOS, and Linux and has no third-party package dependencies.
 
 ## What it shows
@@ -42,9 +47,11 @@ Then run `herdr server reload-config`.
 
 Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. Use Up/Down or Page Up/Page Down to scroll, and Home/End to jump to either end.
 
+Press `l` to switch the entire panel between **Türkçe** and **English** instantly, including dates and countdowns. The initial language follows the system locale (Turkish for `tr`, English otherwise); the selection lasts until the popup closes. Switching language does not fetch quotas or change the refresh interval. Provider-supplied names and diagnostic messages remain as reported.
+
 Press `h` for the Claude card when available. The Codex / ChatGPT card uses Codex's ChatGPT-backed account quota; it does not claim to show separate ChatGPT web-chat model quotas. Claude reports are moved out of OMP's card to avoid counting the same windows twice. OMP's other provider accounts each have their own plan/reset inventory within its card.
 
-Shortcuts stay the same regardless of the active AI tool. The footer only lists quota-card shortcuts for detected adapters; `d`, `a`, `r`, and `q`/`Esc` are always available. The popup-opening shortcut belongs to each user's Herdr configuration, so installing a different AI CLI does not change it. Detected tools without a quota adapter appear in the discovery list rather than receiving a quota-card shortcut.
+Shortcuts stay the same regardless of the active AI tool. The footer only lists quota-card shortcuts for detected adapters; `l`, `d`, `a`, `r`, and `q`/`Esc` are always available. The popup-opening shortcut belongs to each user's Herdr configuration, so installing a different AI CLI does not change it. Detected tools without a quota adapter appear in the discovery list rather than receiving a quota-card shortcut.
 
 The panel uses responsive, bordered quota cards with color-coded usage bars and remaining percentages. Seven-day windows are marked `WEEKLY`; reset rows show local date/time and a countdown. The discovery list starts collapsed. The panel adapts when its terminal is resized and keeps keyboard controls visible. It redraws only on data refresh, keyboard input or resize, with the same 60-second refresh interval and no animation loop.
 
