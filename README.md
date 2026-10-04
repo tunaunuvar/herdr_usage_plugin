@@ -37,7 +37,9 @@ Then run `herdr server reload-config`.
 
 ## Use
 
-Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. The panel refreshes every 60 seconds. Bars change color as a quota fills; reset rows show local date/time and a countdown; seven-day windows are marked `WEEKLY`.
+Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. Use Up/Down or Page Up/Page Down to scroll, and Home/End to jump to either end.
+
+The panel uses responsive, bordered quota cards with color-coded usage bars and remaining percentages. Seven-day windows are marked `WEEKLY`; reset rows show local date/time and a countdown. The discovery list starts collapsed. The panel adapts when its terminal is resized and keeps keyboard controls visible. It redraws only on data refresh, keyboard input or resize, with the same 60-second refresh interval and no animation loop.
 
 ## Privacy and limits
 
@@ -49,6 +51,7 @@ The plugin checks executable names on `PATH` and queries only the Codex and OMP 
 herdr plugin link .
 herdr plugin pane open --plugin tunaunuvar.herdr-usage-limits --entrypoint usage
 node --check usage.js
+node --test usage.test.js
 ```
 
 To uninstall the GitHub-managed copy, run `herdr plugin uninstall tunaunuvar.herdr-usage-limits`.
