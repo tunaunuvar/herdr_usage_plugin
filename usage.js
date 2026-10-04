@@ -4,8 +4,10 @@ const { spawn } = require("node:child_process");
 const readline = require("node:readline");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 
 const REFRESH_MS = 60_000;
+const CLAUDE_CACHE = path.join(os.homedir(), ".cache", "herdr-usage-limits", "claude.json");
 const COMMAND_TIMEOUT_MS = 12_000;
 const LOCALE = Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
 const IS_TURKISH = LOCALE.toLowerCase().startsWith("tr");
@@ -14,7 +16,7 @@ const NO_ADAPTER = text("Bu eklentide kota adaptörü yok", "No quota adapter in
 const AI_TOOLS = [
   { id: "codex", name: "Codex", command: "codex", note: text("Otomatik kota adaptörü", "Quota adapter available") },
   { id: "omp", name: "Oh My Pi (OMP)", command: "omp", note: text("Bağlı OMP sağlayıcıları için otomatik kota", "Automatic quota data for connected OMP providers") },
-  { id: "claude", name: "Claude Code", command: "claude", note: text("Claude Code içinde /usage", "Run /usage inside Claude Code") },
+  { id: "claude", name: "Claude Code", command: "claude", note: text("OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge") },
   { id: "gemini", name: "Gemini CLI", command: "gemini", note: text("Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI") },
   { id: "amp", name: "Amp", command: "amp", note: text("amp usage ile kredi bakiyesi", "Check credits with amp usage") },
   { id: "opencode", name: "OpenCode", command: "opencode", note: text("Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas") },
@@ -55,6 +57,7 @@ const COLORS = process.stdout.isTTY ? {
 } : { reset: "", bold: "", dim: "", cyan: "", green: "", yellow: "", red: "", muted: "", purple: "" };
 const RESET_DATE_FORMAT = new Intl.DateTimeFormat(LOCALE, {
   weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+  year: "numeric",
   timeZoneName: "short",
 });
 
@@ -107,7 +110,13 @@ function codexAppServer() {
     let nextId = 0;
     const pending = new Map();
     let settled = false;
-    const timer = setTimeout(() => finish(new Error("Codex app-server timed out")), COMMAND_TIMEOUT_MS);
+    let account = null;
+    let rateLimits = null;
+    const timer = setTimeout(() => {
+      if (account || rateLimits) finish(null, { ...rateLimits, account,
+        ...(!rateLimits ? { quotaError: "Codex rate-limit request timed out" } : {}) });
+      else finish(new Error("Codex app-server timed out"));
+    }, COMMAND_TIMEOUT_MS);
 
     function finish(error, value) {
       if (settled) return;
@@ -154,12 +163,16 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.4.2" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.5.0" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
-        const limits = await request("account/rateLimits/read");
-        finish(null, limits);
+        await Promise.all([
+          request("account/rateLimits/read").then((value) => { rateLimits = value; })
+            .catch((error) => { rateLimits = { quotaError: error.message }; }),
+          request("account/read", { refreshToken: false }).then((value) => { account = value?.account; }).catch(() => null),
+        ]);
+        finish(null, { ...rateLimits, account });
       } catch (error) {
         finish(error);
       }
@@ -235,6 +248,10 @@ function formatDuration(minutes) {
 
 async function codexUsage() {
   const data = await codexAppServer();
+  return codexResult(data);
+}
+
+function codexResult(data) {
   const limits = data?.rateLimitsByLimitId?.codex
     || data?.rateLimitsByLimitId?.default
     || data?.rateLimits
@@ -252,8 +269,10 @@ async function codexUsage() {
       formatDuration(item.windowDurationMins ?? item.window_duration_mins),
     )];
   });
-  if (!rows.length) throw new Error("Codex has no rate-limit windows to show");
-  return { title: `Codex${limits.planType ? ` · ${limits.planType}` : ""}`, rows };
+  return { title: "Codex / ChatGPT", rows, error: data.quotaError,
+    accounts: [{ name: "ChatGPT", plan: data.account?.planType || limits.planType,
+      resetCredits: data.rateLimitResetCredits }],
+  };
 }
 
 function findOmpReports(value, out = []) {
@@ -296,14 +315,71 @@ function ompWindowRow(limit, provider, account) {
 
 async function ompUsage() {
   const data = await run("omp", ["usage", "--json", "--redact"]);
+  return ompResult(data);
+}
+
+function ompResult(data) {
   const reports = findOmpReports(data);
-  const rows = reports.flatMap((report) => report.limits.map((limit) => ompWindowRow(
+  const accountInfo = (report) => ({ name: String(report.provider || report.providerId || "Account"),
+    plan: report.metadata?.planType || report.metadata?.subscriptionType,
+    resetCredits: report.resetCredits });
+  const rowsFor = (items) => items.flatMap((report) => report.limits.map((limit) => ompWindowRow(
     limit,
     report.provider || report.providerId || report.provider_id,
     report.account || report,
   )));
-  if (!rows.length) throw new Error("OMP reported no account limits");
-  return { title: text("OMP · bağlı hesaplar", "OMP · connected accounts"), rows };
+  if (!reports.length) throw new Error("OMP reported no account limits");
+  const claude = reports.filter((report) => report.provider === "anthropic");
+  const others = reports.filter((report) => report.provider !== "anthropic");
+  return { title: text("OMP · bağlı hesaplar", "OMP · connected accounts"), rows: rowsFor(others),
+    accounts: others.map(accountInfo),
+    note: !others.length ? text("Claude verileri [h] kartında.", "Claude data is in the [h] card.") : null,
+    claude: claude.length ? { title: "Claude · OMP", rows: rowsFor(claude), accounts: claude.map(accountInfo) } : null,
+  };
+}
+
+function claudeSnapshot(data) {
+  return { savedAt: Date.now(), rows: [["five_hour", "5h", 300], ["seven_day", "7d", 10080],
+    ["spend_limit", "Spend limit", null]].flatMap(([key, label, minutes]) => {
+    const item = data.rate_limits?.[key];
+    if (!item) return [];
+    return [windowRow(label, item.used_percentage, timestamp(item.resets_at), null, minutes)];
+  }) };
+}
+
+async function claudeUsage() {
+  let snapshot;
+  try { snapshot = JSON.parse(fs.readFileSync(CLAUDE_CACHE, "utf8")); }
+  catch { throw new Error(text("Claude statusline köprüsünü bağla (README). OMP'de bağlı Claude varsa otomatik gösterilir.",
+    "Connect the Claude statusline bridge (README). Claude connected in OMP appears automatically.")); }
+  const rows = Array.isArray(snapshot.rows) ? snapshot.rows.slice(0, 3).map((row) =>
+    windowRow(row.label, row.used, timestamp(row.resetsAt), null, row.windowMinutes)) : [];
+  if (!rows.length || !timestamp(snapshot.savedAt)) throw new Error("Claude snapshot has no quota data");
+  let plan;
+  if (detectedTools.some((tool) => tool.id === "claude")) {
+    try { plan = (await run("claude", ["auth", "status"])).subscriptionType; } catch { /* Quotas still work without auth metadata. */ }
+  }
+  return { title: "Claude · statusline", rows, snapshotAt: timestamp(snapshot.savedAt),
+    accounts: [{ name: "Claude", plan }] };
+}
+
+function captureClaudeStatusline() {
+  let input = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    input += chunk;
+    if (input.length > 1024 * 1024) process.exit(1);
+  });
+  process.stdin.on("end", () => {
+    try {
+      const snapshot = claudeSnapshot(JSON.parse(input));
+      if (snapshot.rows.length) {
+        fs.mkdirSync(path.dirname(CLAUDE_CACHE), { recursive: true });
+        fs.writeFileSync(CLAUDE_CACHE, JSON.stringify(snapshot), { mode: 0o600 });
+      }
+      process.stdout.write("Claude" + snapshot.rows.map((row) => ` | ${row.label}: ${row.used === null ? "—" : Math.round(row.used) + "%"}`).join(""));
+    } catch { process.stdout.write("Claude"); }
+  });
 }
 
 function progressBar(used, width = 22) {
@@ -323,6 +399,7 @@ const collapsed = new Set(["d"]);
 const sections = [];
 if (detectedTools.some((tool) => tool.id === "codex")) sections.push(["c", "Codex"]);
 if (detectedTools.some((tool) => tool.id === "omp")) sections.push(["o", "OMP"]);
+if (detectedTools.some((tool) => tool.id === "claude") || fs.existsSync(CLAUDE_CACHE)) sections.push(["h", "Claude"]);
 let latestResults = new Map();
 let updatedAt = null;
 let scrollOffset = 0;
@@ -388,12 +465,36 @@ function frame(title, body, width) {
   ];
 }
 
+function accountLines(account) {
+  const unknown = text("bildirilmedi", "not reported");
+  const lines = [text(`Paket · ${account.name}: ${account.plan || unknown}`,
+    `Plan · ${account.name}: ${account.plan || unknown}`),
+    text("Abonelik bitişi · bildirilmedi", "Subscription expiry · not reported")];
+  const resets = account.resetCredits;
+  const count = resets?.availableCount;
+  lines.push(text(`Yenileme hakkı · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`,
+    `Saved resets · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`));
+  if (resets?.redeemableCount !== undefined) lines.push(text(`Şimdi kullanılabilir · ${resets.redeemableCount}`,
+    `Redeemable now · ${resets.redeemableCount}`));
+  if (resets?.cooldownUntil) lines.push(`Cooldown · ${resetText(resets.cooldownUntil)}`);
+  for (const credit of Array.isArray(resets?.credits) ? resets.credits : []) {
+    const expiry = credit.expiresAt === null ? text("süre sınırı yok", "no expiry")
+      : credit.expiresAt === undefined ? unknown : resetText(credit.expiresAt);
+    const countLabel = credit.remainingCount === undefined ? "" : ` ×${credit.remainingCount}`;
+    lines.push(text(`Hak son kullanımı · ${credit.title || "Reset"}${countLabel}: ${expiry}`,
+      `Reset credit expiry · ${credit.title || "Reset"}${countLabel}: ${expiry}`));
+  }
+  if (Number(count) > 0 && !resets?.credits?.length) lines.push(text("Hak son kullanımı · bildirilmedi", "Reset credit expiry · not reported"));
+  return lines;
+}
+
 function renderSection(key, name, result, width = panelWidth()) {
   const folded = collapsed.has(key);
   const marker = folded ? "▸" : "▾";
   const rows = result.rows || [];
   const status = result.error ? `${COLORS.red}${text("VERİ YOK", "NO DATA")}`
     : result.loading ? `${COLORS.yellow}${text("BEKLİYOR", "WAITING")}`
+    : result.snapshotAt ? `${COLORS.yellow}${text("SON ÖLÇÜM", "SNAPSHOT")}`
     : `${COLORS.green}${text("CANLI", "LIVE")}`;
   const title = `${COLORS.muted}[${key}] ${COLORS.cyan}${COLORS.bold}${marker} ${clean(result.title || name)}${COLORS.reset}  ${status}${COLORS.reset}`;
   const lines = [];
@@ -403,6 +504,16 @@ function renderSection(key, name, result, width = panelWidth()) {
     const weekly = rows.some(isWeekly) ? text(" · haftalık reset var", " · weekly reset") : "";
     if (rows.length) lines.push(`  ${COLORS.muted}${count}${weekly}${COLORS.reset}`);
     return frame(title, lines, width);
+  }
+  if (!result.loading) {
+    for (const account of result.accounts || [{ name }]) {
+      lines.push(...accountLines(account).flatMap((line) => wrap(line, contentWidth)
+        .map((part) => `  ${COLORS.muted}${part}${COLORS.reset}`)), "");
+    }
+    if (result.snapshotAt) lines.push(...wrap(text(`Son Claude ölçümü · ${resetText(result.snapshotAt)}; Claude çalışırken güncellenir.`,
+      `Last Claude snapshot · ${resetText(result.snapshotAt)}; updates while Claude runs.`), contentWidth)
+      .map((line) => `  ${COLORS.yellow}${line}${COLORS.reset}`), "");
+    if (result.note) lines.push(...wrap(result.note, contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
   }
   if (result.error || result.loading) {
     const message = result.error || text("Kota bilgileri alınıyor…", "Fetching quota data…");
@@ -440,10 +551,13 @@ function renderDiscovery(width = panelWidth()) {
     return frame(title, lines, width);
   }
   for (const tool of detectedTools) {
-    const hasAdapter = tool.id === "codex" || tool.id === "omp";
+    const hasAdapter = ["codex", "omp", "claude"].includes(tool.id);
     const status = hasAdapter ? text("kota panelinde", "quota panel") : text("tespit edildi", "detected");
     lines.push(`  ${pair(`${COLORS.bold}${tool.name}${COLORS.reset}`, `${hasAdapter ? COLORS.green : COLORS.muted}${status}${COLORS.reset}`, width - 6)}`);
-    if (!hasAdapter) lines.push(`  ${COLORS.muted}${tool.note}${COLORS.reset}`);
+    if (!hasAdapter || tool.id === "claude") lines.push(`  ${COLORS.muted}${tool.note}${COLORS.reset}`);
+    if (!hasAdapter) lines.push(...wrap(text("Paket / abonelik bitişi / yenileme hakkı · veri kaynağı yok",
+      "Plan / subscription expiry / saved resets · no data source"), width - 6)
+      .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
   }
   return frame(title, lines, width);
 }
@@ -459,7 +573,7 @@ function draw() {
     body.push(...renderSection(key, name, latestResults.get(name) || { title: name, loading: true }, width), "");
   }
   if (!sections.length) body.push(...frame(`${COLORS.yellow}${text("Kota kaynağı bulunamadı", "No quota source found")}${COLORS.reset}`,
-    wrap(text("Canlı kota için Codex veya OMP kurup giriş yap.", "Install and sign in to Codex or OMP for live quotas."), width - 6)
+    wrap(text("Codex / OMP'ye giriş yap veya Claude statusline köprüsünü bağla.", "Sign in to Codex / OMP or connect the Claude statusline bridge."), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`), width), "");
   body.push(...renderDiscovery(width));
   pageRows = process.stdout.isTTY ? Math.max(1, (process.stdout.rows || 30) - 6) : body.length;
@@ -492,11 +606,17 @@ async function refresh() {
   const specs = [];
   if (detectedTools.some((tool) => tool.id === "codex")) specs.push(["Codex", codexUsage]);
   if (detectedTools.some((tool) => tool.id === "omp")) specs.push(["OMP", ompUsage]);
+  if (sections.some(([key]) => key === "h")) specs.push(["Claude", claudeUsage]);
   const results = await Promise.all(specs.map(async ([name, fetcher]) => {
     try { return [name, await fetcher()]; }
     catch (error) { return [name, { error: `${error.message}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.")}` }]; }
   }));
   latestResults = new Map(results);
+  const ompClaude = latestResults.get("OMP")?.claude;
+  if (ompClaude) {
+    latestResults.set("Claude", ompClaude);
+    if (!sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
+  }
   updatedAt = new Date().toLocaleTimeString(LOCALE);
   refreshing = false;
   draw();
@@ -548,4 +668,7 @@ function start() {
   refresh();
 }
 
-if (require.main === module) start();
+if (require.main === module) {
+  if (process.argv.includes("--claude-statusline")) captureClaudeStatusline();
+  else start();
+}

@@ -101,6 +101,116 @@ test("quota extremes and unavailable data keep distinct, aligned displays", () =
   }
 });
 
+test("account inventory separates saved reset expiry from subscription expiry", () => {
+  const ui = panel();
+  const response = { account: { planType: "plus", email: "private@example.test" },
+    rateLimits: { primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1900000000 } },
+    rateLimitResetCredits: { availableCount: 2, credits: [
+      { title: "Reset", expiresAt: 1900000000 }, { title: "Permanent", expiresAt: null },
+    ] } };
+  const result = ui.run(`codexResult(${JSON.stringify(response)})`);
+  assert.equal(result.accounts[0].plan, "plus");
+  assert.equal(result.accounts[0].resetCredits.availableCount, 2);
+  assert.ok(!JSON.stringify(result).includes("private@example.test"));
+  const lines = ui.run(`accountLines(${JSON.stringify(result.accounts[0])})`).join("\n");
+  assert.match(lines, /plus/);
+  assert.match(lines, /2030/);
+  assert.match(lines, /süre sınırı yok|no expiry/);
+  assert.match(lines, /Abonelik bitişi · bildirilmedi|Subscription expiry · not reported/);
+  const zero = ui.run('accountLines({name:"Test", resetCredits:{availableCount:0}})').join("\n");
+  const unavailable = ui.run('accountLines({name:"Test"})').join("\n");
+  assert.match(zero, /Yenileme hakkı · 0|Saved resets · 0/);
+  assert.match(unavailable, /Yenileme hakkı · bildirilmedi|Saved resets · not reported/);
+});
+
+test("OMP Claude accounts get their own card without duplicate quota windows", () => {
+  const ui = panel();
+  const result = ui.run(`ompResult({reports:[
+    {provider:"anthropic", limits:[{label:"5h", amount:{usedFraction:0.4}, window:{durationMs:18000000}}],
+      resetCredits:{availableCount:3, credits:[{remainingCount:3, expiresAt:"2030-01-02T00:00:00Z"}]}},
+    {provider:"google-antigravity", limits:[{label:"Model", amount:{usedFraction:0.1}}]}
+  ]})`);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.claude.rows.length, 1);
+  assert.equal(result.claude.rows[0].used, 40);
+  assert.equal(result.claude.accounts[0].resetCredits.availableCount, 3);
+  assert.equal(result.accounts[0].name, "google-antigravity");
+});
+
+test("Claude statusline snapshots whitelist quota fields and preserve unknown usage", () => {
+  const ui = panel();
+  const snapshot = ui.run(`claudeSnapshot({session_id:"secret-session", transcript_path:"private", token:"secret-token",
+    rate_limits:{five_hour:{used_percentage:0,resets_at:1900000000},seven_day:{resets_at:1900000000}}})`);
+  assert.equal(snapshot.rows.length, 2);
+  assert.equal(snapshot.rows[0].used, 0);
+  assert.equal(snapshot.rows[1].used, null);
+  assert.equal(snapshot.rows[1].windowMinutes, 10080);
+  assert.equal(snapshot.rows[0].resetsAt, 1900000000000);
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret|private|token|session/);
+  assert.equal(ui.run('claudeSnapshot({}).rows.length'), 0);
+});
+
+test("Codex keeps a reported plan when the quota request times out", async () => {
+  const { EventEmitter } = require("node:events");
+  const child = new EventEmitter();
+  child.stdout = Object.assign(new EventEmitter(), { setEncoding() {} });
+  let killed = false;
+  child.kill = () => { killed = true; };
+  const methods = [];
+  child.stdin = { write(line) {
+    const request = JSON.parse(line);
+    methods.push(request.method);
+    const result = request.method === "initialize" ? {} : request.method === "account/read"
+      ? { account: { type: "chatgpt", planType: "plus" } } : undefined;
+    if (result) Promise.resolve().then(() => child.stdout.emit("data", JSON.stringify({ id: request.id, result }) + "\n"));
+  } };
+  let deadline;
+  const context = vm.createContext({ require: (name) => name === "node:child_process" ? { spawn: () => child } : require(name),
+    module: {}, process: { env: { PATH: "" }, platform: "win32", stdout: { isTTY: false } },
+    setTimeout(callback) { deadline = callback; return 42; }, clearTimeout() {},
+  });
+  vm.runInContext(source, context);
+  const pending = vm.runInContext("codexUsage()", context);
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  deadline();
+  const result = await pending;
+  assert.equal(result.accounts[0].plan, "plus");
+  assert.match(result.error, /timed out/);
+  assert.equal(result.rows.length, 0);
+  assert.equal(killed, true);
+  assert.deepEqual(methods, ["initialize", "initialized", "account/rateLimits/read", "account/read"]);
+});
+
+test("Claude bridge mode writes a sanitized snapshot without starting polling", async () => {
+  const { PassThrough } = require("node:stream");
+  const input = new PassThrough();
+  const saved = [];
+  let output = "";
+  const bridgeModule = {};
+  const bridgeRequire = (name) => name === "node:fs" ? {
+    existsSync: () => false, mkdirSync() {},
+    writeFileSync(file, data, options) { saved.push({ file, data: JSON.parse(data), options }); },
+  } : name === "node:child_process" ? { spawn() { throw new Error("Bridge must not query a CLI"); } } : require(name);
+  bridgeRequire.main = bridgeModule;
+  const context = vm.createContext({ require: bridgeRequire, module: bridgeModule,
+    process: { env: { PATH: "" }, platform: process.platform, argv: ["node", "usage.js", "--claude-statusline"],
+      stdin: input, stdout: { isTTY: false, write(chunk) { output += chunk; } } },
+    setInterval() { throw new Error("Bridge must not start polling"); }, setTimeout, clearTimeout,
+  });
+  vm.runInContext(source, context);
+  const ended = new Promise((resolve) => input.once("end", resolve));
+  input.end(JSON.stringify({ token: "secret", transcript_path: "private", rate_limits: {
+    five_hour: { used_percentage: 32, resets_at: 1900000000 },
+  } }));
+  await ended;
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].data.rows[0].used, 32);
+  assert.equal(saved[0].options.mode, 0o600);
+  assert.doesNotMatch(JSON.stringify(saved[0].data), /secret|private|token|transcript/);
+  assert.equal(output, "Claude | 5h: 32%");
+  input.destroy();
+});
+
 test("folding sections and scrolling past either end clamp the viewport", () => {
   const ui = panel(80, 14);
   ui.run("scrollOffset = 999; draw()");

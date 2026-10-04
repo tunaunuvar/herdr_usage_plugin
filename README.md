@@ -6,11 +6,14 @@ A small, collapsible terminal popup for account quota windows, with a discovery 
 
 - Codex account rate limits from Codex's local `app-server` RPC.
 - Quota windows returned by authenticated providers in Oh My Pi (OMP). OMP account identifiers are requested in redacted form.
+- Saved rate-limit reset counts and individual reset-credit expiry dates reported by Codex or any OMP provider. Zero and unavailable data are shown differently. The panel only reads this inventory; it does not redeem resets.
+- Reported plan names. Subscription/billing expiry is displayed as `not reported`: the integrated interfaces do not currently expose that date. OAuth token expiry and quota reset dates are not subscription expiry dates.
+- A separate Claude card, automatically populated from Anthropic reports in OMP, or from the optional Claude Code statusline bridge below.
 - Installed AI CLI names discovered on the `PATH` inherited by the Herdr server.
 
 The discovery list currently checks for Codex, OMP, Claude Code, Gemini CLI, Amp, OpenCode, Cursor Agent, GitHub Copilot CLI, Aider, Hermes, Pi, Goose, Crush, Kiro CLI, Qwen Code, Kimi CLI, LLM CLI, and Ollama. A detected tool without an adapter is identified as such; the plugin does not invent quota data. AI CLIs have no shared quota interface, and each provider decides what it exposes.
 
-Claude Code's interactive `/usage`, Gemini CLI's `/stats model`, and Amp's `amp usage` are shown as manual hints when those tools are detected. The plugin does not run those commands.
+Gemini CLI's `/stats model` and Amp's `amp usage` are shown as manual hints when those tools are detected. The plugin does not run those commands. Other detected agents show explicitly that their plan, expiry and saved-reset data has no adapter.
 
 ## Install
 
@@ -21,7 +24,7 @@ herdr plugin install tunaunuvar/herdr_usage_plugin
 herdr plugin action invoke open --plugin tunaunuvar.herdr-usage-limits
 ```
 
-Codex and/or OMP must also be installed and signed in to show live quota bars. The discovery list is scanned when the popup starts; close and reopen it after installing another CLI.
+Codex and/or OMP must be installed and signed in for live queries; Claude Code can instead supply snapshots through the bridge below. The discovery list is scanned when the popup starts; close and reopen it after installing another CLI.
 
 Optional shortcut (`prefix` then `u`, Ctrl+B then `u` by default), add to Herdr's `config.toml`:
 
@@ -39,13 +42,34 @@ Then run `herdr server reload-config`.
 
 Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. Use Up/Down or Page Up/Page Down to scroll, and Home/End to jump to either end.
 
+Press `h` for the Claude card when available. The Codex / ChatGPT card uses Codex's ChatGPT-backed account quota; it does not claim to show separate ChatGPT web-chat model quotas. Claude reports are moved out of OMP's card to avoid counting the same windows twice. OMP's other provider accounts each have their own plan/reset inventory within its card.
+
 Shortcuts stay the same regardless of the active AI tool. The footer only lists quota-card shortcuts for detected adapters; `d`, `a`, `r`, and `q`/`Esc` are always available. The popup-opening shortcut belongs to each user's Herdr configuration, so installing a different AI CLI does not change it. Detected tools without a quota adapter appear in the discovery list rather than receiving a quota-card shortcut.
 
 The panel uses responsive, bordered quota cards with color-coded usage bars and remaining percentages. Seven-day windows are marked `WEEKLY`; reset rows show local date/time and a countdown. The discovery list starts collapsed. The panel adapts when its terminal is resized and keeps keyboard controls visible. It redraws only on data refresh, keyboard input or resize, with the same 60-second refresh interval and no animation loop.
 
 ## Privacy and limits
 
-The plugin checks executable names on `PATH` and queries only the Codex and OMP interfaces described above. It does not scan credential/config files, call provider websites, or send telemetry. CLI discovery is limited to the command list in `usage.js` and to the PATH available to the Herdr server.
+The plugin checks executable names on `PATH`, queries the Codex and OMP interfaces described above, and optionally uses `claude auth status` for the Claude plan name. It does not scan credential/config files, call provider websites, or send telemetry. CLI discovery is limited to the command list in `usage.js` and to the PATH available to the Herdr server.
+
+## Claude Code without OMP
+
+Claude Code's [official statusline payload](https://code.claude.com/docs/en/statusline) includes five-hour and weekly quota usage and reset times for supported subscription accounts. Configure its statusline command to run this plugin's bridge. Example Windows settings (replace the path with your local installation):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node C:/Users/Administrator/Documents/GitHub/herdr_usage_plugin/usage.js --claude-statusline"
+  }
+}
+```
+
+Quote the script path if it contains spaces. Merge `statusLine` into your existing Claude settings; this example replaces an existing statusline, so use it only if you want the bridge's compact quota line. The plugin does not modify Claude settings automatically.
+
+The bridge stores only normalized quota numbers, reset times and the snapshot timestamp in `~/.cache/herdr-usage-limits/claude.json`; no transcript, session IDs or credentials are stored. Reopen the popup after connecting the bridge. Its Claude card is labelled `SNAPSHOT` and shows when Claude last supplied data, since the file updates only while Claude runs. `r` rereads the snapshot rather than making Claude generate a request. One snapshot represents the most recently reporting Claude session/account. Anthropic data already connected in OMP takes precedence and supports multiple reported accounts. Saved resets are available through OMP when reported; the statusline payload does not expose that inventory.
+
+Codex integration fields are documented in the [official app-server reference](https://learn.chatgpt.com/docs/app-server); OMP reset inventories follow its [usage report schema](https://github.com/can1357/oh-my-pi/blob/main/packages/ai/src/usage.ts).
 
 ## Local development
 
