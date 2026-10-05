@@ -2,7 +2,7 @@
 
 [![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
 [![Languages: EN / TR / ES](https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20ES-8B5CF6)](#languages)
-[![Release: v0.6.1](https://img.shields.io/badge/release-v0.6.1-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.6.1)
+[![Release: v0.6.0](https://img.shields.io/badge/release-v0.6.0-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.6.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-97CA00)](LICENSE)
 
 A small, collapsible terminal popup for account quota windows, with a discovery list for common AI CLIs. It runs on Windows, macOS, and Linux and has no third-party package dependencies.
