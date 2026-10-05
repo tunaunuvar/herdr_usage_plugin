@@ -1,8 +1,8 @@
 id = "tunaunuvar.herdr-usage-limits"
 name = "AI Usage Limits"
-version = "0.6.0"
+version = "0.7.0"
 min_herdr_version = "0.9.0"
-description = "Quota, saved reset and plan panel for Codex, Claude and OMP with AI CLI discovery"
+description = "Quota panel for Codex, Claude, OMP, OpenRouter and detected AI CLI tools"
 platforms = ["windows", "macos", "linux"]
 
 [[panes]]

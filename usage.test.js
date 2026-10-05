@@ -3,6 +3,8 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const vm = require("node:vm");
 const { stripVTControlCharacters } = require("node:util");
 
@@ -147,6 +149,44 @@ test("account inventory separates saved reset expiry from subscription expiry", 
   const unavailable = ui.run('accountLines({name:"Test"})').join("\n");
   assert.match(zero, /Yenileme hakkı · 0|Saved resets · 0/);
   assert.match(unavailable, /Yenileme hakkı · bildirilmedi|Saved resets · not reported/);
+});
+
+test("OpenRouter credits become a quota bar without implying a reset date", () => {
+  const ui = panel();
+  const result = ui.run('openrouterResult({data:{total_credits:100,total_usage:25}})');
+  assert.equal(result.rows[0].used, 25);
+  assert.equal(result.rows[0].resetsAt, null);
+  assert.match(result.rows[0].detail, /25\.00 \/ 100\.00 credits used/);
+  assert.throws(() => ui.run('openrouterResult({data:{total_credits:0,total_usage:0}})'), /no credit balance/);
+});
+
+test("detected tools without quota adapters appear as clearly labeled info cards", () => {
+  const ui = panel();
+  ui.run('collapsed.add("w")');
+  const folded = stripVTControlCharacters(ui.run('renderSection("w", "OpenCode", {info:true, note:"Provider sign-ins do not expose account quotas"}, 90)').join("\n"));
+  assert.match(folded, /INFO/);
+  assert.match(folded, /Provider sign-ins do not expose account quotas/);
+  const expanded = stripVTControlCharacters(ui.run('collapsed.delete("w"); renderSection("w", "OpenCode", {info:true, note:"Provider sign-ins do not expose account quotas"}, 90)').join("\n"));
+  assert.match(expanded, /Provider sign-ins do not expose account quotas/);
+  assert.doesNotMatch(expanded, /Subscription expiry/);
+});
+
+test("panels only create CLI cards for executables on Herdr's PATH", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-cli-detection-"));
+  const command = process.platform === "win32" ? "codex.cmd" : "codex";
+  fs.writeFileSync(path.join(directory, command), "");
+  const context = vm.createContext({
+    require: (name) => name === "node:child_process" ? { spawn() {} } : require(name),
+    module: {}, process: { env: { PATH: directory }, platform: process.platform,
+      stdout: { isTTY: false }, stdin: { isTTY: false } },
+    setInterval() { throw new Error("Importing the renderer must not start polling"); }, setTimeout, clearTimeout,
+  });
+  try {
+    vm.runInContext(source, context);
+    assert.equal(JSON.stringify(vm.runInContext('detectedTools.map((tool) => tool.id)', context)), '["codex"]');
+    assert.equal(vm.runInContext('sections.some(([key]) => key === "o")', context), false);
+    assert.equal(vm.runInContext('sections.some(([key]) => key === "c")', context), true);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("OMP Claude accounts get their own card without duplicate quota windows", () => {

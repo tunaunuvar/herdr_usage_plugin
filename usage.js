@@ -5,6 +5,7 @@ const readline = require("node:readline");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const https = require("node:https");
 
 const REFRESH_MS = 60_000;
 const CLAUDE_CACHE = path.join(os.homedir(), ".cache", "herdr-usage-limits", "claude.json");
@@ -20,7 +21,10 @@ const AI_TOOLS = [
   { id: "claude", name: "Claude Code", command: "claude", note: ["OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge", "Cuotas mediante OMP o el puente statusline"] },
   { id: "gemini", name: "Gemini CLI", command: "gemini", note: ["Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI", "Ejecuta /stats model en Gemini CLI"] },
   { id: "amp", name: "Amp", command: "amp", note: ["amp usage ile kredi bakiyesi", "Check credits with amp usage", "Consulta créditos con amp usage"] },
-  { id: "opencode", name: "OpenCode", command: "opencode", note: ["Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas", "Las estadísticas de sesión no son cuotas de cuenta"] },
+  { id: "opencode", name: "OpenCode", command: "opencode", note: ["Sağlayıcı girişleri hesap kotasını göstermez", "Provider sign-ins do not expose account quotas", "Los inicios de sesión del proveedor no muestran cuotas"] },
+  { id: "commandcode", name: "Command Code", command: process.platform === "win32" ? "cmdc" : "command-code",
+    aliases: process.platform === "win32" ? ["command-code"] : [],
+    note: ["Canlı limitler için CLI içinde /usage çalıştır", "Run /usage in the CLI for live limits", "Ejecuta /usage en la CLI para ver límites"] },
   { id: "cursor", name: "Cursor Agent", command: "cursor-agent", note: NO_ADAPTER },
   { id: "copilot", name: "GitHub Copilot CLI", command: "copilot", note: NO_ADAPTER },
   { id: "aider", name: "Aider", command: "aider", note: NO_ADAPTER },
@@ -50,7 +54,10 @@ function findExecutable(command) {
   return false;
 }
 
-const detectedTools = AI_TOOLS.filter((tool) => findExecutable(tool.command));
+const detectedTools = AI_TOOLS.filter((tool) => [tool.command, ...(tool.aliases || [])].some(findExecutable));
+if (process.env.OPENROUTER_MANAGEMENT_KEY && !detectedTools.some((tool) => tool.id === "openrouter")) {
+  detectedTools.push({ id: "openrouter", name: "OpenRouter", command: "OPENROUTER_MANAGEMENT_KEY", note: ["Yönetim anahtarıyla kredi verisi", "Credit data via management key", "Créditos mediante clave de gestión"] });
+}
 const COLORS = process.stdout.isTTY ? {
   reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m",
   cyan: "\x1b[38;5;81m", green: "\x1b[38;5;78m", yellow: "\x1b[38;5;214m",
@@ -174,7 +181,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.6.0" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.7.0" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -329,6 +336,35 @@ async function ompUsage() {
   return ompResult(data);
 }
 
+function openrouterUsage() {
+  return new Promise((resolve, reject) => {
+    const request = https.get("https://openrouter.ai/api/v1/credits", {
+      headers: { Authorization: `Bearer ${process.env.OPENROUTER_MANAGEMENT_KEY}` },
+      timeout: COMMAND_TIMEOUT_MS,
+    }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("end", () => {
+        if (response.statusCode !== 200) return reject(new Error(`OpenRouter credits request failed (${response.statusCode})`));
+        try {
+          resolve(openrouterResult(JSON.parse(body)));
+        } catch (error) { reject(error); }
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("OpenRouter request timed out")));
+    request.on("error", reject);
+  });
+}
+
+function openrouterResult(response) {
+  const total = Number(response?.data?.total_credits);
+  const used = Number(response?.data?.total_usage);
+  if (!Number.isFinite(total) || !Number.isFinite(used) || total <= 0) throw new Error("OpenRouter returned no credit balance");
+  return { title: "OpenRouter · credits", rows: [windowRow("Credits", used / total * 100, null,
+    `${used.toFixed(2)} / ${total.toFixed(2)} credits used`)], accounts: [{ name: "OpenRouter", plan: "Management key" }] };
+}
+
 function ompResult(data) {
   const reports = findOmpReports(data);
   const accountInfo = (report) => ({ name: String(report.provider || report.providerId || "Account"),
@@ -408,11 +444,18 @@ function isWeekly(row) {
     || /weekly|week|hafta|7\s*d|168\s*h/i.test(`${row.period || ""} ${row.label || ""}`);
 }
 
-const collapsed = new Set(["d"]);
 const sections = [];
-if (detectedTools.some((tool) => tool.id === "codex")) sections.push(["c", "Codex"]);
-if (detectedTools.some((tool) => tool.id === "omp")) sections.push(["o", "OMP"]);
-if (detectedTools.some((tool) => tool.id === "claude") || fs.existsSync(CLAUDE_CACHE)) sections.push(["h", "Claude"]);
+const SECTION_KEYS = { codex: "c", omp: "o", claude: "h", gemini: "g", amp: "m", opencode: "w",
+  commandcode: "v", cursor: "u", copilot: "p", aider: "i", hermes: "e", pi: "j", goose: "n",
+  crush: "s", kiro: "k", qwen: "y", kimi: "z", llm: "t", ollama: "x", openrouter: "f" };
+const ADAPTERS = new Set(["codex", "omp", "claude", "openrouter"]);
+const collapsed = new Set(["d", ...detectedTools.filter((tool) => !ADAPTERS.has(tool.id))
+  .map((tool) => SECTION_KEYS[tool.id]).filter(Boolean)]);
+for (const tool of detectedTools) {
+  const key = SECTION_KEYS[tool.id];
+  if (key) sections.push([key, tool.name]);
+}
+if (fs.existsSync(CLAUDE_CACHE) && !sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
 let latestResults = new Map();
 let updatedAt = null;
 let scrollOffset = 0;
@@ -509,6 +552,7 @@ function renderSection(key, name, result, width = panelWidth()) {
   const rows = result.rows || [];
   const status = result.error ? `${COLORS.red}${text("VERİ YOK", "NO DATA", "SIN DATOS")}`
     : result.loading ? `${COLORS.yellow}${text("BEKLİYOR", "WAITING", "ESPERANDO")}`
+    : result.info ? `${COLORS.muted}${text("BİLGİ", "INFO", "INFO")}`
     : result.snapshotAt ? `${COLORS.yellow}${text("SON ÖLÇÜM", "SNAPSHOT", "ÚLTIMA LECTURA")}`
     : `${COLORS.green}${text("CANLI", "LIVE", "EN VIVO")}`;
   const title = `${COLORS.muted}[${key}] ${COLORS.cyan}${COLORS.bold}${marker} ${clean(localized(result.title) || name)}${COLORS.reset}  ${status}${COLORS.reset}`;
@@ -518,9 +562,10 @@ function renderSection(key, name, result, width = panelWidth()) {
     const count = text(`${rows.length} kota penceresi`, `${rows.length} quota windows`, `${rows.length} períodos de cuota`);
     const weekly = rows.some(isWeekly) ? text(" · haftalık reset var", " · weekly reset", " · reinicio semanal") : "";
     if (rows.length) lines.push(`  ${COLORS.muted}${count}${weekly}${COLORS.reset}`);
+    else if (result.info) lines.push(`  ${COLORS.muted}${localized(result.note)}${COLORS.reset}`);
     return frame(title, lines, width);
   }
-  if (!result.loading) {
+  if (!result.loading && !result.info) {
     for (const account of result.accounts || [{ name }]) {
       lines.push(...accountLines(account).flatMap((line) => wrap(line, contentWidth)
         .map((part) => `  ${COLORS.muted}${part}${COLORS.reset}`)), "");
@@ -535,6 +580,10 @@ function renderSection(key, name, result, width = panelWidth()) {
     const message = result.error ? `${localized(result.error)}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.", "Comprueba el inicio de sesión y la instalación de la CLI.")}`
       : text("Kota bilgileri alınıyor…", "Fetching quota data…", "Obteniendo datos de cuota…");
     lines.push(...wrap(message, contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
+    return frame(title, lines, width);
+  }
+  if (result.note && !rows.length) {
+    lines.push(...wrap(localized(result.note), contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
     return frame(title, lines, width);
   }
   for (const [index, row] of rows.entries()) {
@@ -568,10 +617,10 @@ function renderDiscovery(width = panelWidth()) {
     return frame(title, lines, width);
   }
   for (const tool of detectedTools) {
-    const hasAdapter = ["codex", "omp", "claude"].includes(tool.id);
+    const hasAdapter = ["codex", "omp", "claude", "openrouter"].includes(tool.id);
     const status = hasAdapter ? text("kota panelinde", "quota panel", "panel de cuotas") : text("tespit edildi", "detected", "detectada");
     lines.push(`  ${pair(`${COLORS.bold}${tool.name}${COLORS.reset}`, `${hasAdapter ? COLORS.green : COLORS.muted}${status}${COLORS.reset}`, width - 6)}`);
-    if (!hasAdapter || tool.id === "claude") lines.push(`  ${COLORS.muted}${localized(tool.note)}${COLORS.reset}`);
+    if (!hasAdapter || tool.id === "claude" || tool.id === "openrouter") lines.push(`  ${COLORS.muted}${localized(tool.note)}${COLORS.reset}`);
     if (!hasAdapter) lines.push(...wrap(text("Paket / abonelik bitişi / yenileme hakkı · veri kaynağı yok",
       "Plan / subscription expiry / saved resets · no data source", "Plan / fin de suscripción / reinicios · sin fuente de datos"), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
@@ -626,6 +675,10 @@ async function refresh() {
   if (detectedTools.some((tool) => tool.id === "codex")) specs.push(["Codex", codexUsage]);
   if (detectedTools.some((tool) => tool.id === "omp")) specs.push(["OMP", ompUsage]);
   if (sections.some(([key]) => key === "h")) specs.push(["Claude", claudeUsage]);
+  if (detectedTools.some((tool) => tool.id === "openrouter")) specs.push(["OpenRouter", openrouterUsage]);
+  for (const tool of detectedTools.filter((item) => !["codex", "omp", "claude", "openrouter"].includes(item.id))) {
+    specs.push([tool.name, async () => ({ title: tool.name, note: tool.note, info: true })]);
+  }
   const results = await Promise.all(specs.map(async ([name, fetcher]) => {
     try { return [name, await fetcher()]; }
     catch (error) { return [name, { error: error.uiMessage || error.message }]; }
