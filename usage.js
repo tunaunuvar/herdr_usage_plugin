@@ -181,7 +181,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.7.2" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.7.3" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);

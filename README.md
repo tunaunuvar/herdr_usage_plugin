@@ -2,16 +2,18 @@
 
 [![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
 [![Languages: EN / TR / ES](https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20ES-8B5CF6)](#languages)
-[![Release: v0.7.2](https://img.shields.io/badge/release-v0.7.2-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.7.2)
+[![Release: v0.7.3](https://img.shields.io/badge/release-v0.7.3-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.7.3)
 [![License: MIT](https://img.shields.io/badge/license-MIT-97CA00)](LICENSE)
 
-A small, collapsible terminal popup for account quota windows, with a discovery list for common AI CLIs. It runs on Windows, macOS, and Linux and has no third-party package dependencies.
+**One panel for mixed AI setups.** It detects 19 AI CLIs—including OpenCode, Command Code, and Hermes—and shows live quota bars wherever a reliable usage source is available. Unsupported sources remain visible as clear info cards; the plugin does not invent percentages. Runs on Windows, macOS, and Linux with no third-party package dependencies.
 
 ![AI Usage Limits overview: quota progress and reset times, saved reset expiry dates, and keyboard controls](docs/assets/usage-overview.png)
 
 *An annotated capture of the real panel; quota values belong to the captured moment.* [View the original screenshot](docs/assets/panel-screenshot.png).
 
-Open one popup to see **how much quota remains**, **when limits reset**, and **when saved reset credits expire**. Fold cards with a keypress and switch between English, Turkish and Spanish. Live data is available through Codex and OMP; Claude Code can also supply statusline snapshots. OpenRouter credit usage is available when a management key is provided.
+Open one popup to see **how much quota remains**, **when limits reset**, and **when saved reset credits expire**. Fold cards with a keypress and switch between English, Turkish and Spanish.
+
+**Live quota bars:** Codex, connected OMP providers, Claude Code through OMP or its statusline bridge, and OpenRouter credits with a management key. **Also detected:** OpenCode, Command Code, Hermes, Gemini CLI, Amp, Cursor Agent, Copilot CLI, Aider, Pi, Goose, Crush, Kiro, Qwen Code, Kimi CLI, LLM CLI, and Ollama.
 
 ## What it shows
 
