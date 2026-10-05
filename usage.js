@@ -181,7 +181,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.7.1" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.7.2" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -448,12 +448,13 @@ const sections = [];
 const SECTION_KEYS = { codex: "c", omp: "o", claude: "h", gemini: "g", amp: "m", opencode: "w",
   commandcode: "v", cursor: "u", copilot: "p", aider: "i", hermes: "e", pi: "j", goose: "n",
   crush: "s", kiro: "k", qwen: "y", kimi: "z", llm: "t", ollama: "x", openrouter: "f" };
+const SECTION_NAMES = { codex: "Codex", omp: "OMP", claude: "Claude", openrouter: "OpenRouter" };
 const ADAPTERS = new Set(["codex", "omp", "claude", "openrouter"]);
 const collapsed = new Set(["d", ...detectedTools.filter((tool) => !ADAPTERS.has(tool.id))
   .map((tool) => SECTION_KEYS[tool.id]).filter(Boolean)]);
 for (const tool of detectedTools) {
   const key = SECTION_KEYS[tool.id];
-  if (key) sections.push([key, tool.name]);
+  if (key) sections.push([key, SECTION_NAMES[tool.id] || tool.name]);
 }
 if (fs.existsSync(CLAUDE_CACHE) && !sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
 let latestResults = new Map();

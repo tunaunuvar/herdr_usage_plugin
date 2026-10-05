@@ -189,6 +189,23 @@ test("panels only create CLI cards for executables on Herdr's PATH", () => {
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
+test("OMP and Claude section names match the keys used by quota refresh", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-provider-detection-"));
+  const extension = process.platform === "win32" ? ".cmd" : "";
+  for (const command of ["codex", "omp", "claude"]) fs.writeFileSync(path.join(directory, command + extension), "");
+  const context = vm.createContext({
+    require: (name) => name === "node:child_process" ? { spawn() {} } : require(name),
+    module: {}, process: { env: { PATH: directory }, platform: process.platform,
+      stdout: { isTTY: false }, stdin: { isTTY: false } },
+    setInterval() { throw new Error("Importing the renderer must not start polling"); }, setTimeout, clearTimeout,
+  });
+  try {
+    vm.runInContext(source, context);
+    assert.equal(JSON.stringify(vm.runInContext("sections", context)),
+      '[["c","Codex"],["o","OMP"],["h","Claude"]]');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("each quota card updates as its source resolves instead of waiting for all providers", async () => {
   const ui = panel();
   ui.run(`latestResults.clear(); detectedTools.push({id:"codex"}, {id:"omp"});
