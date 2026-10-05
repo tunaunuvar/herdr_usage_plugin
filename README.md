@@ -1,11 +1,17 @@
 # AI Usage Limits for Herdr
 
 [![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
-[![Languages: TR / EN](https://img.shields.io/badge/languages-TR%20%7C%20EN-8B5CF6)](#use)
-[![Release: v0.5.1](https://img.shields.io/badge/release-v0.5.1-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.5.1)
+[![Languages: EN / TR / ES](https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20ES-8B5CF6)](#languages)
+[![Release: v0.6.0](https://img.shields.io/badge/release-v0.6.0-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.6.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-97CA00)](LICENSE)
 
 A small, collapsible terminal popup for account quota windows, with a discovery list for common AI CLIs. It runs on Windows, macOS, and Linux and has no third-party package dependencies.
+
+![AI Usage Limits overview: quota progress and reset times, saved reset expiry dates, and keyboard controls](docs/assets/usage-overview.png)
+
+*An annotated capture of the real panel; quota values belong to the captured moment.* [View the original screenshot](docs/assets/panel-screenshot.png).
+
+Open one popup to see **how much quota remains**, **when limits reset**, and **when saved reset credits expire**. Fold cards with a keypress and switch between English, Turkish and Spanish. Live data is available through Codex and OMP; Claude Code can also supply statusline snapshots.
 
 ## What it shows
 
@@ -47,13 +53,25 @@ Then run `herdr server reload-config`.
 
 Press `c` or `o` to collapse/expand Codex or OMP, `d` to collapse/expand detected tools, `a` to toggle all sections, `r` to refresh, and `q` or `Esc` to close. Use Up/Down or Page Up/Page Down to scroll, and Home/End to jump to either end.
 
-Press `l` to switch the entire panel between **Türkçe** and **English** instantly, including dates and countdowns. The initial language follows the system locale (Turkish for `tr`, English otherwise); the selection lasts until the popup closes. Switching language does not fetch quotas or change the refresh interval. Provider-supplied names and diagnostic messages remain as reported.
+Press `l` to cycle **English → Türkçe → Español → English** instantly, including dates and countdowns. Every popup starts in **English**, regardless of the system locale; the selection lasts until the popup closes. Switching language does not fetch quotas or change the refresh interval. Provider-supplied names and diagnostic messages remain as reported.
 
 Press `h` for the Claude card when available. The Codex / ChatGPT card uses Codex's ChatGPT-backed account quota; it does not claim to show separate ChatGPT web-chat model quotas. Claude reports are moved out of OMP's card to avoid counting the same windows twice. OMP's other provider accounts each have their own plan/reset inventory within its card.
 
 Shortcuts stay the same regardless of the active AI tool. The footer only lists quota-card shortcuts for detected adapters; `l`, `d`, `a`, `r`, and `q`/`Esc` are always available. The popup-opening shortcut belongs to each user's Herdr configuration, so installing a different AI CLI does not change it. Detected tools without a quota adapter appear in the discovery list rather than receiving a quota-card shortcut.
 
 The panel uses responsive, bordered quota cards with color-coded usage bars and remaining percentages. Seven-day windows are marked `WEEKLY`; reset rows show local date/time and a countdown. The discovery list starts collapsed. The panel adapts when its terminal is resized and keeps keyboard controls visible. It redraws only on data refresh, keyboard input or resize, with the same 60-second refresh interval and no animation loop.
+
+## Languages
+
+| Panel language | Code | Selection |
+| --- | --- | --- |
+| English | EN | Default on every launch |
+| Türkçe | TR | Press `l` once |
+| Español | ES | Press `l` twice |
+
+**Türkçe:** Türkçe dil desteği dahildir. Panel İngilizce açılır; `l` tuşuna bir kez basarak Türkçeye geçebilirsin. Başlıklar, açıklamalar, tarihler ve geri sayımlar çevrilir.
+
+**Español:** Incluye soporte en español. El panel se abre en inglés; pulsa `l` dos veces para cambiar al español. Los títulos, las descripciones, las fechas y las cuentas atrás se traducen.
 
 ## Privacy and limits
 

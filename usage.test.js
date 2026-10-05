@@ -41,16 +41,16 @@ function panel(columns = 96, rows = 30) {
 test("narrow and short panes keep content inside the viewport and controls visible", () => {
   for (const columns of [24, 38, 80, 120]) {
     for (const rows of [12, 30]) {
-      for (const turkish of [true, false]) {
-      const ui = panel(columns, rows);
-      ui.run(`IS_TURKISH = ${turkish}; draw()`);
-      const lines = stripVTControlCharacters(ui.output()).split(/\r?\n/);
-      assert.equal(lines.length, rows);
-      for (const line of lines) {
-        assert.ok(ui.run(`visibleWidth(${JSON.stringify(line)})`) <= columns - 2);
-      }
-      assert.match(lines.at(-2), /q\/Esc/);
-      assert.match(lines.at(-1), /\[l\]/);
+      for (const language of ["en", "tr", "es"]) {
+        const ui = panel(columns, rows);
+        ui.run(`language = ${JSON.stringify(language)}; draw()`);
+        const lines = stripVTControlCharacters(ui.output()).split(/\r?\n/);
+        assert.equal(lines.length, rows);
+        for (const line of lines) {
+          assert.ok(ui.run(`visibleWidth(${JSON.stringify(line)})`) <= columns - 2);
+        }
+        assert.match(lines.at(-2), /q\/Esc/);
+        assert.match(lines.at(-1), /\[l\]/);
       }
     }
   }
@@ -60,18 +60,22 @@ test("language changes translate cached notes, card titles, errors and reset dat
   const ui = panel(96, 60);
   ui.run(`latestResults.set("OMP", ompResult({reports:[{provider:"anthropic",limits:[]}]}));
     detectedTools.push(AI_TOOLS.find(tool => tool.id === "gemini")); collapsed.delete("d");`);
-  for (const turkish of [true, false]) {
-    ui.run(`IS_TURKISH = ${turkish}; draw()`);
+  for (const [language, header, accounts, note, cli, month, errorText, hint] of [
+    ["en", /AI USAGE/, /connected accounts/, /Claude data/, /Run \/stats model inside/, /Jan/, /Connection required/, /Check sign-in/],
+    ["tr", /AI KOTA/, /bağlı hesaplar/, /Claude verileri/, /Gemini CLI içinde/, /Oca/, /Bağlantı gerekli/, /Girişi ve CLI/],
+    ["es", /CUOTAS DE IA/, /cuentas conectadas/, /Los datos de Claude/, /Ejecuta \/stats model en/, /ene/, /Conexión necesaria/, /Comprueba el inicio/],
+  ]) {
+    ui.run(`language = ${JSON.stringify(language)}; draw()`);
     const output = stripVTControlCharacters(ui.output());
-    assert.match(output, turkish ? /AI KOTA/ : /AI USAGE/);
-    assert.match(output, turkish ? /bağlı hesaplar/ : /connected accounts/);
-    assert.match(output, turkish ? /Claude verileri/ : /Claude data/);
-    assert.match(output, turkish ? /Gemini CLI içinde/ : /Run \/stats model inside/);
+    assert.match(output, header);
+    assert.match(output, accounts);
+    assert.match(output, note);
+    assert.match(output, cli);
     const reset = ui.run("resetText(Date.UTC(2030, 0, 2, 12))");
-    assert.match(reset, turkish ? /Oca/ : /Jan/);
-    const error = stripVTControlCharacters(ui.run('renderSection("h", "Claude", {error:["Bağlantı gerekli", "Connection required"]}, 90)').join("\n"));
-    assert.match(error, turkish ? /Bağlantı gerekli/ : /Connection required/);
-    assert.match(error, turkish ? /Girişi ve CLI/ : /Check sign-in/);
+    assert.match(reset, month);
+    const error = stripVTControlCharacters(ui.run('renderSection("h", "Claude", {error:["Bağlantı gerekli", "Connection required", "Conexión necesaria"]}, 90)').join("\n"));
+    assert.match(error, errorText);
+    assert.match(error, hint);
   }
 });
 
@@ -278,17 +282,20 @@ test("interactive startup uses one refresh timer and restores the terminal on cl
     clearInterval(id) { assert.equal(id, 42); stopped = true; }, setTimeout, clearTimeout,
   });
   vm.runInContext(source, context);
-  vm.runInContext("IS_TURKISH = true; start()", context);
+  assert.equal(vm.runInContext("language", context), "en");
+  vm.runInContext("start()", context);
   await Promise.resolve();
   assert.equal(timers, 1);
   assert.ok(writes[0].includes("\x1b[?1049h\x1b[?25l"));
   vm.runInContext('scrollOffset = 999; collapsed.add("c")', context);
   input.emit("keypress", "l", { name: "l" });
-  assert.match(stripVTControlCharacters(writes.at(-1)), /AI USAGE/);
+  assert.match(stripVTControlCharacters(writes.at(-1)), /AI KOTA/);
   assert.equal(vm.runInContext("scrollOffset", context), 0);
   assert.equal(vm.runInContext('collapsed.has("c")', context), true);
   input.emit("keypress", "l", { name: "l" });
-  assert.match(stripVTControlCharacters(writes.at(-1)), /AI KOTA/);
+  assert.match(stripVTControlCharacters(writes.at(-1)), /CUOTAS DE IA/);
+  input.emit("keypress", "l", { name: "l" });
+  assert.match(stripVTControlCharacters(writes.at(-1)), /AI USAGE/);
   assert.equal(timers, 1);
   output.columns = 38;
   output.rows = 12;

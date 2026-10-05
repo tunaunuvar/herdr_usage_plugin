@@ -9,18 +9,18 @@ const os = require("node:os");
 const REFRESH_MS = 60_000;
 const CLAUDE_CACHE = path.join(os.homedir(), ".cache", "herdr-usage-limits", "claude.json");
 const COMMAND_TIMEOUT_MS = 12_000;
-const LOCALE = Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
-let IS_TURKISH = LOCALE.toLowerCase().startsWith("tr");
-const text = (tr, en) => IS_TURKISH ? tr : en;
+const LANGUAGES = ["en", "tr", "es"];
+let language = "en";
+const text = (tr, en, es = en) => language === "tr" ? tr : language === "es" ? es : en;
 const localized = (value) => Array.isArray(value) ? text(...value) : value;
-const NO_ADAPTER = ["Bu eklentide kota adaptörü yok", "No quota adapter in this plugin"];
+const NO_ADAPTER = ["Bu eklentide kota adaptörü yok", "No quota adapter in this plugin", "Sin adaptador de cuota en este plugin"];
 const AI_TOOLS = [
-  { id: "codex", name: "Codex", command: "codex", note: ["Otomatik kota adaptörü", "Quota adapter available"] },
-  { id: "omp", name: "Oh My Pi (OMP)", command: "omp", note: ["Bağlı OMP sağlayıcıları için otomatik kota", "Automatic quota data for connected OMP providers"] },
-  { id: "claude", name: "Claude Code", command: "claude", note: ["OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge"] },
-  { id: "gemini", name: "Gemini CLI", command: "gemini", note: ["Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI"] },
-  { id: "amp", name: "Amp", command: "amp", note: ["amp usage ile kredi bakiyesi", "Check credits with amp usage"] },
-  { id: "opencode", name: "OpenCode", command: "opencode", note: ["Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas"] },
+  { id: "codex", name: "Codex", command: "codex", note: ["Otomatik kota adaptörü", "Quota adapter available", "Adaptador de cuota disponible"] },
+  { id: "omp", name: "Oh My Pi (OMP)", command: "omp", note: ["Bağlı OMP sağlayıcıları için otomatik kota", "Automatic quota data for connected OMP providers", "Cuotas automáticas de proveedores conectados a OMP"] },
+  { id: "claude", name: "Claude Code", command: "claude", note: ["OMP veya statusline köprüsü ile kota", "Quotas via OMP or the statusline bridge", "Cuotas mediante OMP o el puente statusline"] },
+  { id: "gemini", name: "Gemini CLI", command: "gemini", note: ["Gemini CLI içinde /stats model", "Run /stats model inside Gemini CLI", "Ejecuta /stats model en Gemini CLI"] },
+  { id: "amp", name: "Amp", command: "amp", note: ["amp usage ile kredi bakiyesi", "Check credits with amp usage", "Consulta créditos con amp usage"] },
+  { id: "opencode", name: "OpenCode", command: "opencode", note: ["Oturum istatistiği hesap kotası değildir", "Session stats are not account quotas", "Las estadísticas de sesión no son cuotas de cuenta"] },
   { id: "cursor", name: "Cursor Agent", command: "cursor-agent", note: NO_ADAPTER },
   { id: "copilot", name: "GitHub Copilot CLI", command: "copilot", note: NO_ADAPTER },
   { id: "aider", name: "Aider", command: "aider", note: NO_ADAPTER },
@@ -32,7 +32,7 @@ const AI_TOOLS = [
   { id: "qwen", name: "Qwen Code", command: "qwen", note: NO_ADAPTER },
   { id: "kimi", name: "Kimi CLI", command: "kimi", note: NO_ADAPTER },
   { id: "llm", name: "LLM CLI", command: "llm", note: NO_ADAPTER },
-  { id: "ollama", name: "Ollama", command: "ollama", note: ["Yerel model aracı; kota adaptörü yok", "Local model tool; no quota adapter"] },
+  { id: "ollama", name: "Ollama", command: "ollama", note: ["Yerel model aracı; kota adaptörü yok", "Local model tool; no quota adapter", "Modelos locales; sin adaptador de cuota"] },
 ];
 
 function findExecutable(command) {
@@ -64,10 +64,12 @@ const DATE_OPTIONS = {
 const RESET_DATE_FORMAT = {
   tr: new Intl.DateTimeFormat("tr-TR", DATE_OPTIONS),
   en: new Intl.DateTimeFormat("en-US", DATE_OPTIONS),
+  es: new Intl.DateTimeFormat("es-ES", DATE_OPTIONS),
 };
 const TIME_FORMAT = {
   tr: new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
   en: new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+  es: new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
 };
 
 function run(command, args, timeoutMs = COMMAND_TIMEOUT_MS) {
@@ -172,7 +174,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.5.1" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.6.0" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -208,19 +210,19 @@ function timestamp(value) {
 
 function timeLeft(ms) {
   const minutes = Math.ceil(Math.max(0, ms) / 60_000);
-  if (minutes < 60) return `${minutes} ${text("dk", "min")}`;
+  if (minutes < 60) return `${minutes} ${text("dk", "min", "min")}`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} ${text("sa", "hr")} ${minutes % 60} ${text("dk", "min")}`;
-  return `${Math.floor(hours / 24)} ${text("g", "d")} ${hours % 24} ${text("sa", "hr")}`;
+  if (hours < 24) return `${hours} ${text("sa", "hr", "h")} ${minutes % 60} ${text("dk", "min", "min")}`;
+  return `${Math.floor(hours / 24)} ${text("g", "d", "d")} ${hours % 24} ${text("sa", "hr", "h")}`;
 }
 
 function resetText(value) {
   const at = timestamp(value);
-  if (!at) return text("reset zamanı bildirilmedi", "reset time not reported");
+  if (!at) return text("reset zamanı bildirilmedi", "reset time not reported", "reinicio no informado");
   const ms = at - Date.now();
-  const date = RESET_DATE_FORMAT[IS_TURKISH ? "tr" : "en"].format(new Date(at));
-  if (ms <= 0) return `${date} · ${text("zamanı geçti", "elapsed")}`;
-  const countdown = IS_TURKISH ? `${timeLeft(ms)} sonra` : `in ${timeLeft(ms)}`;
+  const date = RESET_DATE_FORMAT[language].format(new Date(at));
+  if (ms <= 0) return `${date} · ${text("zamanı geçti", "elapsed", "vencido")}`;
+  const countdown = text(`${timeLeft(ms)} sonra`, `in ${timeLeft(ms)}`, `en ${timeLeft(ms)}`);
   return `${date} · ${countdown}`;
 }
 
@@ -242,11 +244,11 @@ function durationMinutes(source) {
 }
 
 function windowRow(label, used, resetsAt, detail, windowMinutes = null, period = null) {
-  return { label: String(label || text("Kullanım", "Usage")), used: percent(used), resetsAt, detail, windowMinutes, period };
+  return { label: String(label || text("Kullanım", "Usage", "Uso")), used: percent(used), resetsAt, detail, windowMinutes, period };
 }
 
 function formatDuration(minutes) {
-  if (!Number.isFinite(Number(minutes))) return text("Kullanım", "Usage");
+  if (!Number.isFinite(Number(minutes))) return text("Kullanım", "Usage", "Uso");
   const n = Number(minutes);
   if (n === 300) return "5h";
   if (n === 10_080) return "7d";
@@ -340,9 +342,9 @@ function ompResult(data) {
   if (!reports.length) throw new Error("OMP reported no account limits");
   const claude = reports.filter((report) => report.provider === "anthropic");
   const others = reports.filter((report) => report.provider !== "anthropic");
-  return { title: ["OMP · bağlı hesaplar", "OMP · connected accounts"], rows: rowsFor(others),
+  return { title: ["OMP · bağlı hesaplar", "OMP · connected accounts", "OMP · cuentas conectadas"], rows: rowsFor(others),
     accounts: others.map(accountInfo),
-    note: !others.length ? ["Claude verileri [h] kartında.", "Claude data is in the [h] card."] : null,
+    note: !others.length ? ["Claude verileri [h] kartında.", "Claude data is in the [h] card.", "Los datos de Claude están en la tarjeta [h]."] : null,
     claude: claude.length ? { title: "Claude · OMP", rows: rowsFor(claude), accounts: claude.map(accountInfo) } : null,
   };
 }
@@ -361,7 +363,8 @@ async function claudeUsage() {
   try { snapshot = JSON.parse(fs.readFileSync(CLAUDE_CACHE, "utf8")); }
   catch { throw Object.assign(new Error("Connect the Claude statusline bridge (README)."), { uiMessage: [
     "Claude statusline köprüsünü bağla (README). OMP'de bağlı Claude varsa otomatik gösterilir.",
-    "Connect the Claude statusline bridge (README). Claude connected in OMP appears automatically."] }); }
+    "Connect the Claude statusline bridge (README). Claude connected in OMP appears automatically.",
+    "Conecta el puente statusline de Claude (README). Claude conectado a OMP aparece automáticamente."] }); }
   const rows = Array.isArray(snapshot.rows) ? snapshot.rows.slice(0, 3).map((row) =>
     windowRow(row.label, row.used, timestamp(row.resetsAt), null, row.windowMinutes)) : [];
   if (!rows.length || !timestamp(snapshot.savedAt)) throw new Error("Claude snapshot has no quota data");
@@ -476,25 +479,27 @@ function frame(title, body, width) {
 }
 
 function accountLines(account) {
-  const unknown = text("bildirilmedi", "not reported");
+  const unknown = text("bildirilmedi", "not reported", "no informado");
   const lines = [text(`Paket · ${account.name}: ${account.plan || unknown}`,
-    `Plan · ${account.name}: ${account.plan || unknown}`),
-    text("Abonelik bitişi · bildirilmedi", "Subscription expiry · not reported")];
+    `Plan · ${account.name}: ${account.plan || unknown}`, `Plan · ${account.name}: ${account.plan || unknown}`),
+    text("Abonelik bitişi · bildirilmedi", "Subscription expiry · not reported", "Fin de suscripción · no informado")];
   const resets = account.resetCredits;
   const count = resets?.availableCount;
   lines.push(text(`Yenileme hakkı · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`,
-    `Saved resets · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`));
+    `Saved resets · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`,
+    `Reinicios guardados · ${count !== null && count !== undefined && Number.isFinite(Number(count)) ? count : unknown}`));
   if (resets?.redeemableCount !== undefined) lines.push(text(`Şimdi kullanılabilir · ${resets.redeemableCount}`,
-    `Redeemable now · ${resets.redeemableCount}`));
-  if (resets?.cooldownUntil) lines.push(`Cooldown · ${resetText(resets.cooldownUntil)}`);
+    `Redeemable now · ${resets.redeemableCount}`, `Disponibles ahora · ${resets.redeemableCount}`));
+  if (resets?.cooldownUntil) lines.push(`${text("Bekleme süresi", "Cooldown", "Tiempo de espera")} · ${resetText(resets.cooldownUntil)}`);
   for (const credit of Array.isArray(resets?.credits) ? resets.credits : []) {
-    const expiry = credit.expiresAt === null ? text("süre sınırı yok", "no expiry")
+    const expiry = credit.expiresAt === null ? text("süre sınırı yok", "no expiry", "sin vencimiento")
       : credit.expiresAt === undefined ? unknown : resetText(credit.expiresAt);
     const countLabel = credit.remainingCount === undefined ? "" : ` ×${credit.remainingCount}`;
     lines.push(text(`Hak son kullanımı · ${credit.title || "Reset"}${countLabel}: ${expiry}`,
-      `Reset credit expiry · ${credit.title || "Reset"}${countLabel}: ${expiry}`));
+      `Reset credit expiry · ${credit.title || "Reset"}${countLabel}: ${expiry}`,
+      `Vencimiento del reinicio · ${credit.title || "Reset"}${countLabel}: ${expiry}`));
   }
-  if (Number(count) > 0 && !resets?.credits?.length) lines.push(text("Hak son kullanımı · bildirilmedi", "Reset credit expiry · not reported"));
+  if (Number(count) > 0 && !resets?.credits?.length) lines.push(text("Hak son kullanımı · bildirilmedi", "Reset credit expiry · not reported", "Vencimiento del reinicio · no informado"));
   return lines;
 }
 
@@ -502,16 +507,16 @@ function renderSection(key, name, result, width = panelWidth()) {
   const folded = collapsed.has(key);
   const marker = folded ? "▸" : "▾";
   const rows = result.rows || [];
-  const status = result.error ? `${COLORS.red}${text("VERİ YOK", "NO DATA")}`
-    : result.loading ? `${COLORS.yellow}${text("BEKLİYOR", "WAITING")}`
-    : result.snapshotAt ? `${COLORS.yellow}${text("SON ÖLÇÜM", "SNAPSHOT")}`
-    : `${COLORS.green}${text("CANLI", "LIVE")}`;
+  const status = result.error ? `${COLORS.red}${text("VERİ YOK", "NO DATA", "SIN DATOS")}`
+    : result.loading ? `${COLORS.yellow}${text("BEKLİYOR", "WAITING", "ESPERANDO")}`
+    : result.snapshotAt ? `${COLORS.yellow}${text("SON ÖLÇÜM", "SNAPSHOT", "ÚLTIMA LECTURA")}`
+    : `${COLORS.green}${text("CANLI", "LIVE", "EN VIVO")}`;
   const title = `${COLORS.muted}[${key}] ${COLORS.cyan}${COLORS.bold}${marker} ${clean(localized(result.title) || name)}${COLORS.reset}  ${status}${COLORS.reset}`;
   const lines = [];
   const contentWidth = width - 6;
   if (folded) {
-    const count = text(`${rows.length} kota penceresi`, `${rows.length} quota windows`);
-    const weekly = rows.some(isWeekly) ? text(" · haftalık reset var", " · weekly reset") : "";
+    const count = text(`${rows.length} kota penceresi`, `${rows.length} quota windows`, `${rows.length} períodos de cuota`);
+    const weekly = rows.some(isWeekly) ? text(" · haftalık reset var", " · weekly reset", " · reinicio semanal") : "";
     if (rows.length) lines.push(`  ${COLORS.muted}${count}${weekly}${COLORS.reset}`);
     return frame(title, lines, width);
   }
@@ -521,29 +526,30 @@ function renderSection(key, name, result, width = panelWidth()) {
         .map((part) => `  ${COLORS.muted}${part}${COLORS.reset}`)), "");
     }
     if (result.snapshotAt) lines.push(...wrap(text(`Son Claude ölçümü · ${resetText(result.snapshotAt)}; Claude çalışırken güncellenir.`,
-      `Last Claude snapshot · ${resetText(result.snapshotAt)}; updates while Claude runs.`), contentWidth)
+      `Last Claude snapshot · ${resetText(result.snapshotAt)}; updates while Claude runs.`,
+      `Última lectura de Claude · ${resetText(result.snapshotAt)}; se actualiza mientras Claude está activo.`), contentWidth)
       .map((line) => `  ${COLORS.yellow}${line}${COLORS.reset}`), "");
     if (result.note) lines.push(...wrap(localized(result.note), contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
   }
   if (result.error || result.loading) {
-    const message = result.error ? `${localized(result.error)}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.")}`
-      : text("Kota bilgileri alınıyor…", "Fetching quota data…");
+    const message = result.error ? `${localized(result.error)}. ${text("Girişi ve CLI kurulumunu kontrol et.", "Check sign-in and CLI availability.", "Comprueba el inicio de sesión y la instalación de la CLI.")}`
+      : text("Kota bilgileri alınıyor…", "Fetching quota data…", "Obteniendo datos de cuota…");
     lines.push(...wrap(message, contentWidth).map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
     return frame(title, lines, width);
   }
   for (const [index, row] of rows.entries()) {
     if (index) lines.push("");
-    const label = `${isWeekly(row) ? `${COLORS.purple}[${text("HAFTALIK", "WEEKLY")}] ${COLORS.reset}` : ""}${COLORS.bold}${clean(row.label)}${COLORS.reset}`;
+    const label = `${isWeekly(row) ? `${COLORS.purple}[${text("HAFTALIK", "WEEKLY", "SEMANAL")}] ${COLORS.reset}` : ""}${COLORS.bold}${clean(row.label)}${COLORS.reset}`;
     const color = row.used >= 90 ? COLORS.red : row.used >= 70 ? COLORS.yellow : COLORS.green;
     const value = row.used === null
       ? `${COLORS.muted}—${COLORS.reset}`
-      : `${color}${COLORS.bold}${Math.round(row.used)}%${COLORS.reset} ${COLORS.muted}${text("kullanım", "used")}${COLORS.reset}`;
-    const remaining = row.used === null ? text("veri yok", "no data")
-      : `${Math.round(100 - row.used)}% ${text("kaldı", "left")}`;
+      : `${color}${COLORS.bold}${Math.round(row.used)}%${COLORS.reset} ${COLORS.muted}${text("kullanım", "used", "usado")}${COLORS.reset}`;
+    const remaining = row.used === null ? text("veri yok", "no data", "sin datos")
+      : `${Math.round(100 - row.used)}% ${text("kaldı", "left", "restante")}`;
     const barWidth = Math.max(3, Math.min(32, contentWidth - visibleWidth(remaining) - 2));
     lines.push(`  ${pair(label, value, contentWidth)}`);
     lines.push(`  ${pair(progressBar(row.used, barWidth), `${COLORS.muted}${remaining}${COLORS.reset}`, contentWidth)}`);
-    lines.push(...wrap(`Reset · ${resetText(row.resetsAt)}`, contentWidth)
+    lines.push(...wrap(`${text("Reset", "Reset", "Reinicio")} · ${resetText(row.resetsAt)}`, contentWidth)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
     if (typeof row.detail === "string" && row.detail) lines.push(`  ${COLORS.muted}${clean(row.detail)}${COLORS.reset}`);
   }
@@ -552,22 +558,22 @@ function renderSection(key, name, result, width = panelWidth()) {
 
 function renderDiscovery(width = panelWidth()) {
   const folded = collapsed.has("d");
-  const heading = text("Tespit edilen AI CLI'ları", "Detected AI CLIs");
+  const heading = text("Tespit edilen AI CLI'ları", "Detected AI CLIs", "CLI de IA detectadas");
   const title = `${COLORS.muted}[d] ${COLORS.cyan}${folded ? "▸" : "▾"} ${heading}${COLORS.reset} ${COLORS.muted}· ${detectedTools.length}${COLORS.reset}`;
   const lines = [];
   if (folded) return frame(title, lines, width);
   if (!detectedTools.length) {
-    lines.push(...wrap(text("Bilinen AI CLI'ları Herdr'nin PATH'inde bulunamadı.", "No known AI CLIs found on Herdr's PATH."), width - 6)
+    lines.push(...wrap(text("Bilinen AI CLI'ları Herdr'nin PATH'inde bulunamadı.", "No known AI CLIs found on Herdr's PATH.", "No se encontraron CLI de IA conocidas en el PATH de Herdr."), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
     return frame(title, lines, width);
   }
   for (const tool of detectedTools) {
     const hasAdapter = ["codex", "omp", "claude"].includes(tool.id);
-    const status = hasAdapter ? text("kota panelinde", "quota panel") : text("tespit edildi", "detected");
+    const status = hasAdapter ? text("kota panelinde", "quota panel", "panel de cuotas") : text("tespit edildi", "detected", "detectada");
     lines.push(`  ${pair(`${COLORS.bold}${tool.name}${COLORS.reset}`, `${hasAdapter ? COLORS.green : COLORS.muted}${status}${COLORS.reset}`, width - 6)}`);
     if (!hasAdapter || tool.id === "claude") lines.push(`  ${COLORS.muted}${localized(tool.note)}${COLORS.reset}`);
     if (!hasAdapter) lines.push(...wrap(text("Paket / abonelik bitişi / yenileme hakkı · veri kaynağı yok",
-      "Plan / subscription expiry / saved resets · no data source"), width - 6)
+      "Plan / subscription expiry / saved resets · no data source", "Plan / fin de suscripción / reinicios · sin fuente de datos"), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`));
   }
   return frame(title, lines, width);
@@ -578,13 +584,13 @@ function draw() {
   const body = [];
   const rows = [...latestResults.values()].flatMap((result) => result.rows || []);
   const weekly = rows.filter(isWeekly).length;
-  const status = refreshing ? `${COLORS.yellow}${text("YENİLENİYOR", "SYNCING")}` : `${COLORS.green}${text("HAZIR", "READY")}`;
-  const summary = text(`${rows.length} kota penceresi · ${weekly} haftalık`, `${rows.length} quota windows · ${weekly} weekly`);
+  const status = refreshing ? `${COLORS.yellow}${text("YENİLENİYOR", "SYNCING", "ACTUALIZANDO")}` : `${COLORS.green}${text("HAZIR", "READY", "LISTO")}`;
+  const summary = text(`${rows.length} kota penceresi · ${weekly} haftalık`, `${rows.length} quota windows · ${weekly} weekly`, `${rows.length} períodos de cuota · ${weekly} semanales`);
   for (const [key, name] of sections) {
     body.push(...renderSection(key, name, latestResults.get(name) || { title: name, loading: true }, width), "");
   }
-  if (!sections.length) body.push(...frame(`${COLORS.yellow}${text("Kota kaynağı bulunamadı", "No quota source found")}${COLORS.reset}`,
-    wrap(text("Codex / OMP'ye giriş yap veya Claude statusline köprüsünü bağla.", "Sign in to Codex / OMP or connect the Claude statusline bridge."), width - 6)
+  if (!sections.length) body.push(...frame(`${COLORS.yellow}${text("Kota kaynağı bulunamadı", "No quota source found", "Sin fuente de cuotas")}${COLORS.reset}`,
+    wrap(text("Codex / OMP'ye giriş yap veya Claude statusline köprüsünü bağla.", "Sign in to Codex / OMP or connect the Claude statusline bridge.", "Inicia sesión en Codex / OMP o conecta el puente statusline de Claude."), width - 6)
       .map((line) => `  ${COLORS.muted}${line}${COLORS.reset}`), width), "");
   body.push(...renderDiscovery(width));
   pageRows = process.stdout.isTTY ? Math.max(1, (process.stdout.rows || 30) - 6) : body.length;
@@ -593,17 +599,17 @@ function draw() {
   const viewport = body.slice(scrollOffset, scrollOffset + pageRows);
   while (viewport.length < pageRows) viewport.push("");
   const lines = [
-    pair(`${COLORS.cyan}${COLORS.bold}HERDR${COLORS.reset} ${COLORS.muted}/ ${text("AI KOTA", "AI USAGE")}${COLORS.reset}`, `${status}${COLORS.reset}`, width),
+    pair(`${COLORS.cyan}${COLORS.bold}HERDR${COLORS.reset} ${COLORS.muted}/ ${text("AI KOTA", "AI USAGE", "CUOTAS DE IA")}${COLORS.reset}`, `${status}${COLORS.reset}`, width),
     pair(`${COLORS.muted}${summary}${COLORS.reset}`, `${COLORS.muted}${updatedAt
-      ? typeof updatedAt === "number" ? TIME_FORMAT[IS_TURKISH ? "tr" : "en"].format(updatedAt) : updatedAt
+      ? typeof updatedAt === "number" ? TIME_FORMAT[language].format(updatedAt) : updatedAt
       : "—"} · 60s${COLORS.reset}`, width),
     "",
     ...viewport,
     `${COLORS.muted}${"─".repeat(width)}${COLORS.reset}`,
     pair(width < 52 ? `${COLORS.cyan}[r]  [q/Esc]${COLORS.reset}`
-      : `${COLORS.cyan}[r]${COLORS.reset} ${text("Yenile", "Refresh")}  ${COLORS.cyan}[q/Esc]${COLORS.reset} ${text("Kapat", "Close")}`,
+      : `${COLORS.cyan}[r]${COLORS.reset} ${text("Yenile", "Refresh", "Actualizar")}  ${COLORS.cyan}[q/Esc]${COLORS.reset} ${text("Kapat", "Close", "Cerrar")}`,
       scrollEnd ? `${COLORS.muted}↑↓ ${scrollOffset + 1}/${scrollEnd + 1}${COLORS.reset}` : "", width),
-    fit(`${COLORS.muted}${[["l", text("English", "Türkçe")], ...sections, ["d", "CLI"], ["a", text("Aç/kapat", "Toggle all")]]
+    fit(`${COLORS.muted}${[["l", text("Español", "Türkçe", "English")], ...sections, ["d", "CLI"], ["a", text("Aç/kapat", "Toggle all", "Alternar todo")]]
       .map(([key, name]) => `[${key}]${width < 48 ? "" : ` ${name}`}`).join("  ")}${COLORS.reset}`, width),
   ];
   process.stdout.write(process.stdout.isTTY
@@ -658,7 +664,7 @@ function start() {
       }
       if (key.name === "r") refresh();
       if (key.name === "l") {
-        IS_TURKISH = !IS_TURKISH;
+        language = LANGUAGES[(LANGUAGES.indexOf(language) + 1) % LANGUAGES.length];
         scrollOffset = 0;
         draw();
       }
