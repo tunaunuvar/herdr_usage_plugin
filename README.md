@@ -37,6 +37,14 @@ herdr plugin action invoke open --plugin tunaunuvar.herdr-usage-limits
 
 Codex and/or OMP must be installed and signed in for live queries; Claude Code can instead supply snapshots through the bridge below. The discovery list is scanned when the popup starts; close and reopen it after installing another CLI.
 
+## Companion: AI Skills for Herdr
+
+The related [AI Skills plugin](https://github.com/tunaunuvar/herdr_skills_plugin) lists skills and tools for each agent session. Its **Enabled**, **Read** and **No record** labels describe availability and observed history; **No record** means usage is unknown. The example below uses one captured session, so its counts can change.
+
+![Illustrated AI Skills popup showing enabled skills, observed reads and unknown usage](docs/assets/skills-overview.png)
+
+Install the companion separately with `herdr plugin install tunaunuvar/herdr_skills_plugin`.
+
 Optional shortcut (`prefix` then `u`, Ctrl+B then `u` by default), add to Herdr's `config.toml`:
 
 ```toml
@@ -85,7 +93,7 @@ Claude Code's [official statusline payload](https://code.claude.com/docs/en/stat
 {
   "statusLine": {
     "type": "command",
-    "command": "node C:/Users/Administrator/Documents/GitHub/herdr_usage_plugin/usage.js --claude-statusline"
+    "command": "node C:/path/to/herdr_usage_plugin/usage.js --claude-statusline"
   }
 }
 ```
