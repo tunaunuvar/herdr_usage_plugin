@@ -1,15 +1,11 @@
 # Herdr AI Quota Bar
 
-![AI Quota Bar dashboard with live quota bars for Codex, Claude, OMP and OpenRouter, plus detected OpenCode, Command Code and Hermes tools](docs/assets/ai-quota-bar.png)
-
-*Illustrative preview: values shown are examples. OpenCode, Command Code and Hermes are detected; live quota bars depend on an available source.*
-
 [![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
 [![Languages: EN / TR / ES](https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20ES-8B5CF6)](#languages)
 [![Release: v0.7.3](https://img.shields.io/badge/release-v0.7.3-orange)](https://github.com/tunaunuvar/herdr_usage_plugin/tree/v0.7.3)
 [![License: MIT](https://img.shields.io/badge/license-MIT-97CA00)](LICENSE)
 
-**One panel for mixed AI setups.** It detects 19 AI CLIs—including OpenCode, Command Code, and Hermes—and shows live quota bars wherever a reliable usage source is available. Unsupported sources remain visible as clear info cards; the plugin does not invent percentages. Runs on Windows, macOS, and Linux with no third-party package dependencies.
+**One panel. 19 detected AI CLIs.** Find Codex, Claude Code, OpenCode, OMP, Command Code, Hermes, Gemini CLI, Copilot CLI and more in one Herdr popup. Live quota bars are available for Codex, Claude Code, connected OMP providers and OpenRouter credits when configured. Other detected tools remain visible as info cards. Runs on Windows, macOS and Linux with no third-party package dependencies.
 
 ![AI Usage Limits overview: quota progress and reset times, saved reset expiry dates, and keyboard controls](docs/assets/usage-overview.png)
 
