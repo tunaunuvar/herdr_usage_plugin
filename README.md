@@ -1,4 +1,8 @@
-# AI Usage Limits for Herdr
+# Herdr AI Quota Bar
+
+![AI Quota Bar dashboard with live quota bars for Codex, Claude, OMP and OpenRouter, plus detected OpenCode, Command Code and Hermes tools](docs/assets/ai-quota-bar.png)
+
+*Illustrative preview: values shown are examples. OpenCode, Command Code and Hermes are detected; live quota bars depend on an available source.*
 
 [![Platform: Windows / macOS / Linux](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
 [![Languages: EN / TR / ES](https://img.shields.io/badge/languages-EN%20%7C%20TR%20%7C%20ES-8B5CF6)](#languages)
