@@ -181,7 +181,7 @@ function codexAppServer() {
     (async () => {
       try {
         await request("initialize", {
-          clientInfo: { name: "herdr-usage-limits", version: "0.7.0" },
+          clientInfo: { name: "herdr-usage-limits", version: "0.7.1" },
           capabilities: {},
         });
         child.stdin.write(`${JSON.stringify({ method: "initialized", params: {} })}\n`);
@@ -679,17 +679,25 @@ async function refresh() {
   for (const tool of detectedTools.filter((item) => !["codex", "omp", "claude", "openrouter"].includes(item.id))) {
     specs.push([tool.name, async () => ({ title: tool.name, note: tool.note, info: true })]);
   }
-  const results = await Promise.all(specs.map(async ([name, fetcher]) => {
-    try { return [name, await fetcher()]; }
-    catch (error) { return [name, { error: error.uiMessage || error.message }]; }
+  await Promise.all(specs.map(async ([name, fetcher]) => {
+    let timer;
+    try {
+      const result = await Promise.race([fetcher(), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${name} usage query timed out`)), COMMAND_TIMEOUT_MS + 1000);
+      })]);
+      latestResults.set(name, result);
+      if (name === "OMP" && result.claude) {
+        latestResults.set("Claude", result.claude);
+        if (!sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
+      }
+    } catch (error) {
+      latestResults.set(name, { error: error.uiMessage || error.message });
+    } finally {
+      clearTimeout(timer);
+      updatedAt = Date.now();
+      draw();
+    }
   }));
-  latestResults = new Map(results);
-  const ompClaude = latestResults.get("OMP")?.claude;
-  if (ompClaude) {
-    latestResults.set("Claude", ompClaude);
-    if (!sections.some(([key]) => key === "h")) sections.push(["h", "Claude"]);
-  }
-  updatedAt = Date.now();
   refreshing = false;
   draw();
 }

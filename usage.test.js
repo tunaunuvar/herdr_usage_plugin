@@ -189,6 +189,22 @@ test("panels only create CLI cards for executables on Herdr's PATH", () => {
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
+test("each quota card updates as its source resolves instead of waiting for all providers", async () => {
+  const ui = panel();
+  ui.run(`latestResults.clear(); detectedTools.push({id:"codex"}, {id:"omp"});
+    sections.splice(0, sections.length, ["c", "Codex"], ["o", "OMP"]);
+    codexUsage = async () => ({title:"Codex", rows:[]});
+    ompUsage = () => new Promise(resolve => { pendingOmp = resolve; });`);
+  const pending = ui.run("refresh()");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(ui.run('latestResults.has("Codex")'), true);
+  assert.equal(ui.run('latestResults.has("OMP")'), false);
+  ui.run('pendingOmp({title:"OMP", rows:[]})');
+  await pending;
+  assert.equal(ui.run('latestResults.has("OMP")'), true);
+  assert.equal(ui.run("refreshing"), false);
+});
+
 test("OMP Claude accounts get their own card without duplicate quota windows", () => {
   const ui = panel();
   const result = ui.run(`ompResult({reports:[
